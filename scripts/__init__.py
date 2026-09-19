@@ -1,0 +1,1 @@
+# ForgeMind AI — Scripts package
