@@ -55,6 +55,8 @@ from backend.schemas import (
     CurePreventionApplyActionRequest,
     CurePreventionStatusUpdateRequest,
     CurePreventionVerificationRequest,
+    FactoryAssistantChatRequest,
+    WhatIfSimulationRequest,
 )
 
 from scripts.forgemind.cure_prevention_engine import (
@@ -330,6 +332,8 @@ def save_economic_preset(
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/economic/unit-impact", tags=["Economic Engine"])
 @app.get("/api/v1/economic/unit-impact", tags=["Economic Engine"])
+@app.post("/api/v1/economic-impact/simulated", tags=["Economic Engine"])
+@app.get("/api/v1/economic-impact/simulated", tags=["Economic Engine"])
 def calculate_unit_economic_impact_endpoint(
     impact_level: Optional[str] = Query(None),
     defect: Optional[str] = Query(None),
@@ -771,6 +775,159 @@ def verify_cure_prevention_endpoint(payload: CurePreventionVerificationRequest):
         return sanitize_value(res)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+
+
+# ---------------------------------------------------------------------------
+# Factory Assistant Chat Endpoint (Conversational Intelligence & RAG)
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/factory-assistant/chat", tags=["Factory Assistant"])
+def factory_assistant_chat_endpoint(payload: FactoryAssistantChatRequest):
+    """
+    Dual-category Factory Assistant conversation:
+    - Normal questions (manufacturing terms, CNC, throughput, Grad-CAM, page navigation)
+    - ForgeMind inspection questions (defect investigation, FMEA hypotheses, historical precedents)
+    Strictly refuses to hallucinate unverified machine parameters.
+    """
+    from scripts.ml.factory_assistant_engine import chat_with_factory_assistant
+    resp = chat_with_factory_assistant(
+        message=payload.message,
+        history=payload.history,
+        inspection_context=payload.inspection_context,
+    )
+    return sanitize_value(resp)
+
+
+# ---------------------------------------------------------------------------
+# Historical Cases REST Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/cases", tags=["Historical Cases"])
+def list_historical_cases_endpoint():
+    """
+    Lists all available historical defect cases, including seeded demo cases
+    and dynamically learned verified production cases.
+    """
+    from scripts.forgemind.cure_prevention_engine import _HISTORICAL_LIBRARY
+    cases_list = [copy_case for copy_case in _HISTORICAL_LIBRARY.values()]
+    return sanitize_value({
+        "total_cases": len(cases_list),
+        "cases": cases_list,
+        "evidence_tag": "[HISTORICAL EVIDENCE]",
+    })
+
+
+@app.get("/api/v1/cases/similar", tags=["Historical Cases"])
+def get_similar_cases_endpoint(
+    defect: Optional[str] = Query(None),
+    confidence: Optional[float] = Query(None),
+    inspection_id: Optional[str] = Query(None),
+):
+    """
+    Standardized REST query for similar historical cases.
+    Retains metric decoupling: confidence is [MODEL], similarity is [SIMILARITY].
+    """
+    res = search_similar_cases(
+        defect_type=defect,
+        vision_confidence=confidence,
+        inspection_id=inspection_id,
+    )
+    return sanitize_value(res)
+
+
+@app.post("/api/v1/cases/{case_id}/approve", tags=["Historical Cases"])
+def approve_case_action_endpoint(case_id: str, payload: CurePreventionApplyActionRequest):
+    """
+    Human-in-the-loop action approval for a historical case recommendation.
+    Transitions status to ACTION_APPROVED [USER CONFIRMED].
+    """
+    res = apply_previous_action(
+        inspection_id=payload.inspection_id,
+        case_id=case_id,
+        action_text=payload.action_text,
+        user_note=payload.user_note,
+    )
+    return sanitize_value(res)
+
+
+@app.post("/api/v1/cases/{case_id}/verify", tags=["Historical Cases"])
+def verify_case_action_endpoint(case_id: str, payload: CurePreventionVerificationRequest):
+    """
+    Records human verification of prevention effectiveness.
+    Stores verified outcomes in the historical library for continuous learning.
+    """
+    try:
+        res = verify_case_prevention(
+            inspection_id=case_id,
+            outcome=payload.outcome,
+            defect_type=payload.defect_type,
+            verification_notes=payload.verification_notes,
+        )
+        return sanitize_value(res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+# ---------------------------------------------------------------------------
+# What-If Process Simulation Endpoint (Current vs Alternative Process)
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/simulate", tags=["Process Intelligence"])
+def simulate_what_if_process_endpoint(payload: WhatIfSimulationRequest):
+    """
+    Compares Current Baseline Process vs Alternative Process:
+    - Throughput delta (units/hour and %)
+    - Defect rate reduction (percentage points)
+    - Cycle time change (seconds)
+    - Relative capacity gain (%)
+    All outputs strictly labeled [SIMULATED]. Zero fabricated monetary loss.
+    """
+    th_delta = round(payload.alternative_throughput - payload.baseline_throughput, 2)
+    th_pct = round((th_delta / max(payload.baseline_throughput, 1.0)) * 100.0, 2)
+    dr_delta = round(payload.alternative_defect_rate - payload.baseline_defect_rate, 2)
+    
+    # Relative capacity gain percentage
+    cap_gain = max(0.0, round(th_pct - dr_delta, 2))
+
+    return sanitize_value({
+        "scenario_name": payload.scenario_name,
+        "baseline": {
+            "throughput_units_hr": payload.baseline_throughput,
+            "defect_rate_pct": payload.baseline_defect_rate,
+            "provenance": "[MEASURED / BASELINE]",
+        },
+        "alternative": {
+            "throughput_units_hr": payload.alternative_throughput,
+            "defect_rate_pct": payload.alternative_defect_rate,
+            "provenance": "[SIMULATED]",
+        },
+        "throughput_change_units_hr": th_delta,
+        "throughput_change_pct": th_pct,
+        "defect_rate_change_pp": dr_delta,
+        "cycle_time_delta_sec": payload.cycle_time_delta_sec,
+        "simulated_impact_level": "OPTIMIZED" if th_delta > 0 else "BASELINE",
+        "relative_capacity_gain_pct": cap_gain,
+        "evidence_tag": "[SIMULATED]",
+        "disclaimer": "Simulated alternative comparison only. Shop-floor machine actuation and actual performance require human physical verification.",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Unified Knowledge Search Endpoint (Project Docs + Engineering FMEA)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/knowledge/search", tags=["Quality Intelligence"])
+def search_knowledge_endpoint(q: str = Query(..., min_length=1), defect: Optional[str] = Query(None)):
+    """
+    Searches multi-source engineering and project knowledge:
+    - Source Type 1: Project Knowledge (FORGEMIND_AI_KNOWLEDGE.md)
+    - Source Type 2: Engineering FMEA Guides (data/engineering_knowledge/)
+    - Source Type 3: Historical Defect Library
+    """
+    from scripts.ml.knowledge_retriever import retrieve_unified_knowledge
+    res = retrieve_unified_knowledge(query=q, defect_class=defect)
+    return sanitize_value({
+        "query": q,
+        "defect_class": defect,
+        "total_sources": len(res.get("sources", [])),
+        "sources": res.get("sources", []),
+    })
 
 
 if __name__ == "__main__":

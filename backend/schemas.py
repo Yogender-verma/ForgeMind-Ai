@@ -232,4 +232,61 @@ class CurePreventionVerificationRequest(BaseModel):
     verification_notes: Optional[str] = Field(None, description="Quality engineer verification notes")
 
 
+# ---------------------------------------------------------------------------
+# Factory Assistant & Multi-Source RAG Schemas
+# ---------------------------------------------------------------------------
+class FactoryAssistantChatRequest(BaseModel):
+    message: str = Field(..., description="User query or message")
+    history: Optional[list[dict[str, str]]] = Field(default=None, description="Recent conversation turns")
+    inspection_context: Optional[dict[str, Any]] = Field(default=None, description="Active inspection specimen metadata")
 
+
+class FactoryAssistantChatResponse(BaseModel):
+    reply: str
+    evidence: str = ""
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    provenance_tags: list[str] = Field(default_factory=list)
+    suggested_actions: list[str] = Field(default_factory=list)
+    is_fallback: bool = False
+
+
+# ---------------------------------------------------------------------------
+# What-If Process Simulation Schemas (Current vs Alternative Process)
+# ---------------------------------------------------------------------------
+class WhatIfSimulationRequest(BaseModel):
+    baseline_throughput: float = Field(200.0, description="Current baseline throughput in units/hr")
+    alternative_throughput: float = Field(215.0, description="Alternative scenario throughput in units/hr")
+    baseline_defect_rate: float = Field(4.5, description="Current defect rate in %")
+    alternative_defect_rate: float = Field(1.2, description="Alternative defect rate in %")
+    cycle_time_delta_sec: float = Field(-3.5, description="Cycle time change in seconds")
+    scenario_name: Optional[str] = Field("Optimized Fixture & Coolant Delivery", description="Name of alternative scenario")
+
+
+class WhatIfSimulationResponse(BaseModel):
+    scenario_name: str
+    baseline: dict[str, Any]
+    alternative: dict[str, Any]
+    throughput_change_units_hr: float
+    throughput_change_pct: float
+    defect_rate_change_pp: float
+    cycle_time_delta_sec: float
+    simulated_impact_level: str
+    relative_capacity_gain_pct: float
+    evidence_tag: str = "[SIMULATED]"
+    disclaimer: str
+
+
+# ---------------------------------------------------------------------------
+# Historical Case & Knowledge Search Schemas
+# ---------------------------------------------------------------------------
+class HistoricalCasesListResponse(BaseModel):
+    total_cases: int
+    cases: list[dict[str, Any]]
+    evidence_tag: str = "[HISTORICAL EVIDENCE]"
+
+
+class KnowledgeSearchResponse(BaseModel):
+    query: str
+    defect_class: Optional[str] = None
+    total_sources: int
+    sources: list[dict[str, Any]]

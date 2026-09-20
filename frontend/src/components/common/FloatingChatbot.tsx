@@ -1,4 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getInspectionById } from '../../services/inspectionStore';
+
+interface ChatSource {
+  source_type?: string;
+  source_name?: string;
+  doc_id?: string;
+  section?: string;
+}
 
 interface ChatMessage {
   id: string;
@@ -6,6 +14,7 @@ interface ChatMessage {
   text: string;
   time: string;
   tags?: string[];
+  sources?: ChatSource[];
 }
 
 export const FloatingChatbot: React.FC = () => {
@@ -24,7 +33,7 @@ export const FloatingChatbot: React.FC = () => {
       {
         id: 'msg-init',
         sender: 'assistant',
-        text: 'Greetings, Engineer. I am your ForgeMind Industrial AI Assistant, available across all sections. Ask me anything regarding defect diagnostics, FMEA root-cause hypotheses, SOP procedures, or Cure & Prevention case tracking.',
+        text: 'Greetings, Engineer. I am your ForgeMind Factory Assistant, available across all sections. Ask me anything regarding defect diagnostics, FMEA root-cause hypotheses, SOP procedures, or Cure & Prevention case tracking.',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         tags: ['[DECISION SUPPORT]', '[FMEA]'],
       },
@@ -75,7 +84,7 @@ export const FloatingChatbot: React.FC = () => {
     'Why is financial loss restricted to user-selected percentages?',
   ];
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if (!query) return;
 
@@ -91,7 +100,64 @@ export const FloatingChatbot: React.FC = () => {
     setInput('');
     setIsThinking(true);
 
-    // Provide detailed engineering intelligence
+    // Extract active inspection context if user is on an analysis page
+    let inspectionContext: any = null;
+    const match = window.location.pathname.match(/\/analysis\/([A-Za-z0-9_-]+)/);
+    if (match && match[1]) {
+      const activeInspection = getInspectionById(match[1]);
+      if (activeInspection) {
+        inspectionContext = {
+          inspection_id: activeInspection.id,
+          defect: activeInspection.prediction,
+          confidence: activeInspection.confidence,
+          gradcam_available: true,
+          active_case_status: 'NEW',
+          economic_impact: 'MEDIUM (10%)',
+          recommended_action:
+            activeInspection.investigation?.recommended_actions?.[0]?.action ||
+            'Audit coolant pH and drying knife dwell time',
+        };
+      }
+    }
+
+    // Try backend Factory Assistant API (powered by Gemini + RAG)
+    try {
+      const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const historyPayload = messages.slice(-4).map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text,
+      }));
+
+      const res = await fetch(`${apiBase}/api/v1/factory-assistant/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          history: historyPayload,
+          inspection_context: inspectionContext,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          sender: 'assistant',
+          text: data.reply,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          tags: data.provenance_tags || ['[ADVISORY]'],
+          sources: (data.sources || []).slice(0, 3),
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsThinking(false);
+        if (isMinimized) setHasUnread(true);
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend Assistant API notice, using deterministic fallback:', err);
+    }
+
+    // Local deterministic fallback (offline / network error resilience)
     setTimeout(() => {
       const lower = query.toLowerCase();
       let replyText = '';
@@ -280,6 +346,19 @@ export const FloatingChatbot: React.FC = () => {
                             >
                               {t}
                             </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Source Citations */}
+                      {m.sources && m.sources.length > 0 && (
+                        <div className="flex flex-col gap-0.5 mt-1.5 pt-1.5 border-t border-white/5 text-[9px] font-mono text-slate-400">
+                          <span className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">Evidence Grounding:</span>
+                          {m.sources.map((s, sIdx) => (
+                            <div key={sIdx} className="flex items-center gap-1 truncate text-slate-300">
+                              <span className="text-cyan-400">📄</span>
+                              <span className="truncate">{s.doc_id ? `[${s.doc_id}] ` : ''}{s.source_name || s.section}</span>
+                            </div>
                           ))}
                         </div>
                       )}
