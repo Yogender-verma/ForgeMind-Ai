@@ -4,7 +4,7 @@
 
 ForgeMind AI bridges the gap between computer vision defect detection and factory operational decisions. When an inspection image is uploaded, the platform classifies the surface defect morphology, highlights its contributing visual regions via Grad-CAM, links the event to simulated line station context, estimates downstream queue pressure and financial loss ranges, presents actionable engineering containment options for human review, and persists verified resolutions to PostgreSQL for automated retrieval on repeat defects:
 
-$$\text{Image} \longrightarrow \text{Defect Type + Heatmap} \longrightarrow \text{Simulated Line Cause} \longrightarrow \text{Flow \& Profit Ranges} \longrightarrow \text{Human Decision (Approve/Edit/Reject)} \longrightarrow \text{Case Library Reuse}$$
+$$\text{Image} \longrightarrow \text{Defect Type + Heatmap} \longrightarrow \text{Simulated Line Cause} \longrightarrow \text{Flow and Profit Ranges} \longrightarrow \text{Human Decision (Approve/Edit/Reject)} \longrightarrow \text{Case Library Reuse}$$
 
 ---
 
