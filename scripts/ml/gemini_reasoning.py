@@ -304,6 +304,42 @@ def investigate_defect_causes(
     context_to_use = simulated_context or factory_context
     evidence_docs = retrieve_engineering_evidence(defect_class)
 
+    if "uncertain" in defect_class.lower() or "novel" in defect_class.lower():
+        report = DefectInvestigationReport(
+            defect="Uncertain / Novel",
+            potential_causes=[
+                PotentialCause(
+                    cause="Possible Novel Defect or Out-of-Distribution Feature",
+                    factor="Possible Novel Defect or Out-of-Distribution Feature",
+                    explanation="Visual classifier flagged high classification entropy, sub-threshold certainty, or narrow margin between top classes. Specimen may exhibit novel defect characteristics.",
+                    why_considered="Epistemic uncertainty criteria exceeded.",
+                    evidence_strength="LOW",
+                    status="HYPOTHESIS",
+                    sources=["ForgeMind Epistemic Uncertainty Engine"],
+                )
+            ],
+            recommended_investigation=[
+                "Perform manual visual inspection by quality engineer under magnification.",
+                "Verify specimen surface against golden physical reference samples.",
+                "Route specimen for CMM coordinate or metallographic examination.",
+            ],
+            recommended_actions=[
+                RecommendedAction(
+                    action="Route to human quality engineer for verification and novel defect characterization",
+                    reason="Specimen exhibits novel visual characteristics outside canonical baseline distributions",
+                    sources=["ForgeMind Human Review Protocol"],
+                )
+            ],
+            linkage_note="Simulated scenario linked via deterministic SHA-256 mapping. Traceability is not physically measured.",
+            causal_status="NOT_ESTABLISHED",
+            factory_evidence=["Visual-to-production record linkage is not available in the supplied datasets."],
+            limitations=["Visual classifier flagged specimen as out-of-distribution or ambiguous."],
+            requires_engineer_review=True,
+            insufficient_evidence=False,
+            status_message="needs human review, possible novel defect",
+        )
+        return report.model_dump()
+
     if not evidence_docs:
         report = DefectInvestigationReport(
             defect=defect_class,

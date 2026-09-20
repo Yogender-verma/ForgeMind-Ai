@@ -184,3 +184,65 @@ def test_unsupported_defect_handling():
     assert res["insufficient_evidence"] is True
     assert "Insufficient evidence" in res["status_message"]
     assert len(res["potential_causes"]) == 0
+
+
+# ===========================================================================
+# Batch-to-Batch Drift Detection Tests
+# ===========================================================================
+from scripts.forgemind.drift_engine import detect_batch_drift, _compute_psi
+
+
+def test_no_drift_on_constant_series():
+    """Verify that a constant synthetic series shows no drift (KS p ≈ 1, PSI ≈ 0)."""
+    rng = np.random.default_rng(42)
+    # 1000 rows of identical distribution (constant + tiny noise for numerical stability)
+    data = {
+        "Parts per hour": rng.normal(loc=50.0, scale=0.001, size=1000),
+        "VA Time": rng.normal(loc=100.0, scale=0.001, size=1000),
+    }
+    df = pd.DataFrame(data)
+
+    result = detect_batch_drift(model_key="Model_1", n_windows=5, df=df)
+
+    assert result["linkage"] == "SIMULATED"
+    assert result["causal_status"] == "HYPOTHESIS_ONLY"
+
+    # No windows should be flagged as DRIFT
+    drift_windows = [w for w in result["windows"] if w["overall_status"] == "DRIFT"]
+    assert len(drift_windows) == 0, f"Expected no drift but found {len(drift_windows)} DRIFT windows"
+
+
+def test_drift_detected_on_shifted_series():
+    """Verify that a shifted synthetic series triggers DRIFT detection (KS p < 0.01, PSI > 0.2)."""
+    rng = np.random.default_rng(42)
+    n_per_window = 200
+    n_windows = 5
+    n_total = n_per_window * n_windows
+
+    # Windows 0-3: baseline distribution
+    baseline_data = rng.normal(loc=50.0, scale=5.0, size=n_per_window * 4)
+    # Window 4: shifted by +3 sigma (mean 65 instead of 50)
+    shifted_data = rng.normal(loc=65.0, scale=5.0, size=n_per_window)
+
+    col_values = np.concatenate([baseline_data, shifted_data])
+    df = pd.DataFrame({
+        "Parts per hour": col_values,
+        "VA Time": rng.normal(loc=100.0, scale=2.0, size=n_total),
+    })
+
+    result = detect_batch_drift(model_key="Model_1", n_windows=n_windows, df=df)
+
+    # Window 4 (the shifted one) should be flagged
+    drift_windows = [w for w in result["windows"] if w["overall_status"] == "DRIFT"]
+    assert len(drift_windows) >= 1, f"Expected at least 1 DRIFT window but found {len(drift_windows)}"
+
+    # Verify the flagged window is window 4
+    drift_window_ids = [w["window"] for w in drift_windows]
+    assert 4 in drift_window_ids, f"Expected window 4 in drift list but got {drift_window_ids}"
+
+    # Verify KS p-value < 0.01 and PSI > 0.2 for the drifted column
+    w4 = [w for w in result["windows"] if w["window"] == 4][0]
+    pph_info = w4["columns"]["Parts per hour"]
+    assert pph_info["status"] == "DRIFT"
+    assert pph_info["ks_pvalue"] < 0.01, f"KS p-value {pph_info['ks_pvalue']} should be < 0.01"
+    assert pph_info["psi"] > 0.2, f"PSI {pph_info['psi']} should be > 0.2"

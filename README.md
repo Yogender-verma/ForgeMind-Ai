@@ -1,367 +1,483 @@
 # ForgeMind AI
-### *From Defect Detection to Industrial Decision Intelligence*
 
-> **"See the Problem. Understand the Impact. Shape a Better Tomorrow."**
-> 
-> **Product Quality | Production Insight | Financial Intelligence | Continuous Improvement**
+### Industrial Visual Inspection & Operational Decision-Support Platform
 
----
+ForgeMind AI bridges the gap between computer vision defect detection and factory operational decisions. When an inspection image is uploaded, the platform classifies the surface defect morphology, highlights its contributing visual regions via Grad-CAM, links the event to simulated line station context, estimates downstream queue pressure and financial loss ranges, presents actionable engineering containment options for human review, and persists verified resolutions to PostgreSQL for automated retrieval on repeat defects:
 
-## Table of Contents
-1. [Executive Summary & Vision](#1-executive-summary--vision)
-2. [End-to-End Operational Flow (17-Step Process)](#2-end-to-end-operational-flow-17-step-process)
-3. [Uniqueness & Key Differentiators](#3-uniqueness--key-differentiators)
-4. [Detailed 17-Step Workflow Breakdown](#4-detailed-17-step-workflow-breakdown)
-   - [Phase 1: Quality & Defect Intelligence (Steps 1–6)](#phase-1-quality--defect-intelligence-steps-16)
-   - [Phase 2: Evidence & Economic Impact Analysis (Steps 7–10)](#phase-2-evidence--economic-impact-analysis-steps-710)
-   - [Phase 3: Recommendations, What-If Simulation & Human Review (Steps 11–14)](#phase-3-recommendations-what-if-simulation--human-review-steps-1114)
-   - [Phase 4: Execution, Closed-Loop Monitoring & Continuous Learning (Steps 15–17)](#phase-4-execution-closed-loop-monitoring--continuous-learning-steps-1517)
-5. [System Architecture & Provenance Data Tagging](#5-system-architecture--provenance-data-tagging)
-6. [Core Analytical & Engine Architecture](#6-core-analytical--engine-architecture)
-7. [Technology Stack](#7-technology-stack)
-8. [Local Development Setup](#8-local-development-setup)
-9. [Automated Testing](#9-automated-testing)
-10. [Production Deployment](#10-production-deployment)
+$$\text{Image} \longrightarrow \text{Defect Type + Heatmap} \longrightarrow \text{Simulated Line Cause} \longrightarrow \text{Flow \& Profit Ranges} \longrightarrow \text{Human Decision (Approve/Edit/Reject)} \longrightarrow \text{Case Library Reuse}$$
 
 ---
 
-## 1. Executive Summary & Vision
+## 1. Problem Statement
 
-High-throughput manufacturing environments operate at the tight intersection of **product quality**, **process capacity**, and **economic efficiency**. Traditional industrial inspection tools act in isolation:
-* Camera systems detect surface defects but cannot explain *why* they occurred.
-* Sensor dashboards monitor temperature and pressure but lack direct linkage to *defect rate outcomes*.
-* ERP and accounting systems record scrap and downtime costs long after production runs complete.
+In industrial manufacturing, defect inspection cannot operate as an isolated task. Standard computer vision models function merely as label predictors: an image enters, a class like "Crack" or "Hole" is returned, and the model halts.
 
-**ForgeMind AI** is a unified industrial decision-support system that closes this loop. By connecting **Computer Vision (OpenCV/YOLO)**, **Process Telemetry**, **Production Flow Dynamics**, and **Financial Economics**, ForgeMind AI provides an end-to-end operational pipeline—from real-time part inspection to root-cause diagnosis, economic loss quantification, interactive what-if simulation, engineer validation, and continuous reinforcement learning.
+Plant supervisors, quality engineers, and continuous improvement teams face critical questions that standard image classifiers cannot answer:
+1. **Root-Cause Origin**: *Which workstation, tooling feed rate, or thermal cycle likely produced this anomaly?*
+2. **Operational Flow Impact**: *How will an elevated defect rate impact downstream station queues, buffer capacities, and overall parts-per-hour throughput?*
+3. **Financial Consequence**: *What is the net profit loss under fluctuating material scrap and rework labor rates?*
+4. **Actionable Containment**: *What standard operating procedure (SOP) or verified historical fix should be applied immediately?*
+5. **Organizational Memory**: *When the same defect recurs three shifts later, how can the team retrieve the previously approved fix rather than re-diagnosing from scratch?*
 
----
-
-## 2. End-to-End Operational Flow (17-Step Process)
-
-ForgeMind AI operates through a structured **17-step operational flow** divided into four interconnected phases:
-
-```
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 FORGEMIND AI OPERATIONAL FLOW                                    │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
-
- [PHASE 1: QUALITY & DEFECT INTELLIGENCE]
-   1. Input (Product Image Upload/Capture)
-      │
-   2. Image Processing (OpenCV: Noise reduction, contrast enhancement, segmentation)
-      │
-   3. Defect Detection (YOLO Object Detection: Bounding boxes & confidence scores)
-      │
-   4. Defect Classification (Crack, Rust, Scratch, Hole, Normal)
-      │
-   5. Defect Details (Coordinates, size in mm, severity level, confidence score)
-      │
-   6. Quality Intelligence (What is wrong? Where is it? How severe? Known vs. Novel?)
-      │
-      ▼
- [PHASE 2: EVIDENCE & ECONOMIC IMPACT ANALYSIS]
-   7. Evidence & Investigation Engine (Joins Batch B17, Station S3, Process Data, Time/Shift)
-      │
-   8. Potential Contributing Factors (Evidence-weighted hypothesis ranking & correlation)
-      │
-   9. Impact Analysis (Production Impact: Throughput ↓, WIP ↑ | Quality Impact: Scrap ↑, Rework ↑)
-      │
-  10. Financial Loss Estimation (Scrap, Rework, Downtime, Shortfall → Total Estimated Loss)
-      │
-      ▼
- [PHASE 3: RECOMMENDATIONS, SIMULATION & HUMAN REVIEW]
-  11. Recommendation Engine (Preventive actions, parameter checks, risk mitigation)
-      │
-  12. What-If Simulator (Simulate scenario: e.g. Reduce S3 cycle time by 10% → Defect rate 8% to 3.5%)
-      │
-  13. Financial Outcome Comparison (Current loss vs. projected loss post-intervention & ROI)
-      │
-  14. Human / Engineer Review (Engineer validates hypothesis & approves action)
-      │
-      ▼
- [PHASE 4: EXECUTION, MONITORING & CONTINUOUS LEARNING]
-  15. Implement & Monitor (Track defect rate, production throughput & financial savings)
-      │
-  16. Did It Work? (Validation Gate)
-      ├── YES ──► Record success as best practice → Update Knowledge Base
-      └── NO  ──► Reopen investigation & test alternative hypotheses
-      │
-  17. Continuous Learning (Store outcomes, retrain models — Every case makes ForgeMind smarter!)
-```
+ForgeMind AI solves this operational problem by combining computer vision, discrete-event line dynamics, Monte Carlo unit economics, and a persistent human-in-the-loop review workflow.
 
 ---
 
-## 3. Uniqueness & Key Differentiators
+## 2. What Makes ForgeMind AI Different
 
-| Capability | Standard Visual Inspection Tools | ForgeMind AI Platform |
-|------------|-----------------------------------|-----------------------|
-| **Inspection Scope** | Isolated image classification (outputs label & stops) | Complete 17-step operational chain from image capture to continuous learning |
-| **Data Integration** | Quality data siloed from process sensors & financial ERP | Multi-layer data fusion joining quality, process telemetry, flow logs, and cost models |
-| **Root-Cause Analysis** | Manual manual correlation across disjointed logs | Automated evidence-weighted hypothesis generator ranking contributing factors |
-| **Financial Impact** | Non-existent or calculated in separate monthly finance reports | Real-time dollar/rupee quantification (Scrap, Rework, Downtime, Shortfall) |
-| **Intervention Planning** | Static rulebooks or trial-and-error manual adjustments | Interactive What-If Simulator evaluating cost/benefit of process changes |
-| **Human Governance** | Full manual oversight or unvalidated automated rules | Human-in-the-Loop review portal for engineer validation & approval |
-| **Adaptability** | Fixed rules requiring manual retraining | Closed-loop continuous learning system that learns from past intervention outcomes |
-| **Data Provenance** | Unlabeled estimates presented as facts | Strict labeling: `[MEASURED]`, `[CALCULATED]`, `[ESTIMATED]`, `[SIMULATED]` |
+Every capability listed below is verified in the active codebase:
 
----
+1. **"Uncertain / Novel" Rejection Gate (No Forced Guesses)**:
+   Instead of forcing ambiguous, blurred, or novel specimens into a closed 5-class taxonomy, the inference service flags predictions as `"Uncertain / Novel"` whenever:
+   - Softmax top-1 confidence $< 0.85$, OR
+   - Top-2 logit probability margin $< 0.15$, OR
+   - Normalized Shannon entropy $> 0.60$ $\left(\frac{H}{\ln K}\right)$.
+   *Verified in [`scripts/ml/inference_service.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/inference_service.py).*
 
-## 4. Detailed 17-Step Workflow Breakdown
+2. **Persistent Human Review & Repeat-Defect Reuse**:
+   Engineers review every classification with three explicit actions:
+   - **Approve**: Adopts recommended containment fix.
+   - **Edit**: Customizes corrective action text and adds reviewer notes.
+   - **Reject**: Declines recommendation with mandatory logged justification.
+   All decisions persist to PostgreSQL (`DefectCaseReview`) via SQLAlchemy. On subsequent identical defects, the system automatically retrieves previously approved actions for instant re-approval.
+   *Verified in [`backend/models.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/models.py), [`scripts/forgemind/cure_prevention_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/cure_prevention_engine.py), and [`backend/server.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/server.py).*
 
-### Phase 1: Quality & Defect Intelligence (Steps 1–6)
+3. **Structured Case Lifecycle & Verification**:
+   Cases advance through auditable operational states:
+   $$\text{NEW} \longrightarrow \text{IN\_REVIEW} \longrightarrow \text{ACTION\_APPLIED} \longrightarrow \text{VERIFIED} \;\;(\text{or } \text{DEFECT\_RECURRED})$$
+   *Verified in [`scripts/forgemind/cure_prevention_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/cure_prevention_engine.py).*
 
-#### **Step 1: Input (Product Image Upload / Capture)**
-* **Objective:** Ingest product images directly from production line inspection cameras or manual upload.
-* **Details:** Captures high-resolution visual surface data of manufactured components (e.g., castings, machined parts, stampings).
+4. **Transparent Trust & Evidence Tagging**:
+   Every numerical and qualitative output is explicitly labeled with provenance tags:
+   - `[SIMULATED]`: For deterministic synthetic line linkages and discrete-event flow runs.
+   - `[HYPOTHESIS_ONLY]`: For exploratory root-cause correlations requiring physical confirmation.
+   - `[USER CONFIRMED]`: For engineer-validated actions and baseline parameter values.
+   - `SIMULATED RANGE`: For Monte Carlo cost distributions.
+   *Verified in [`backend/schemas.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/schemas.py) and [`backend/server.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/server.py).*
 
-#### **Step 2: Image Processing (OpenCV)**
-* **Objective:** Pre-process raw image tensors to highlight structural surface anomalies.
-* **Details:** Executes noise reduction filters, adaptive contrast enhancement, image segmentation, and edge/feature extraction.
+5. **Profit & Margin Ranges via Monte Carlo Simulation**:
+   Instead of misleading single-point estimates, user-entered unit price, material cost, scrap cost, and rework cost are simulated over 500 iterations with fixed seed (42) and $\pm 10\text{--}20\%$ cost variation, yielding $p_{10}$, $p_{50}$, and $p_{90}$ ranges for estimated profit, margin %, and total defect loss.
+   *Verified in [`scripts/forgemind/economic_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/economic_engine.py).*
 
-#### **Step 3: Defect Detection (YOLO)**
-* **Objective:** Detect defect regions of interest using deep object detection models.
-* **Details:** Generates precise bounding box coordinates and confidence probability scores (e.g., `Crack (0.96)`).
+6. **Batch-to-Batch Drift Monitoring**:
+   Evaluates sequential production windows against reference distributions using two-sample Kolmogorov-Smirnov tests ($p < 0.01$), Population Stability Index (PSI $> 0.25$), and cumulative sum control charts (CUSUM $> 4.0$).
+   *Verified in [`scripts/forgemind/drift_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/drift_engine.py).*
 
-#### **Step 4: Defect Classification**
-* **Objective:** Categorize identified anomalies into standardized defect taxonomy.
-* **Details:** Classifies defects into families: **Crack**, **Rust**, **Scratch**, **Hole**, or **Normal**.
-
-#### **Step 5: Defect Details Extraction**
-* **Objective:** Extract physical metrics from detected anomaly regions.
-* **Details:** Evaluates defect location $(x, y)$, surface area/length (e.g., $12.4\text{ mm}$), severity category (Low/Medium/High), and detector confidence level.
-
-#### **Step 6: Quality Intelligence**
-* **Objective:** Synthesize structural diagnostic insights for quality control engineers.
-* **Details:** Evaluates: *What is wrong? Where is it? How severe is it? Is it a known defect or a novel pattern anomaly?*
-
----
-
-### Phase 2: Evidence & Economic Impact Analysis (Steps 7–10)
-
-#### **Step 7: Evidence & Investigation Engine**
-* **Objective:** Cross-correlate quality defects with upstream manufacturing context.
-* **Details:** Links defect records with **Batch ID (e.g., B17)**, **Station ID (e.g., S3)**, process parameter logs (temperature, pressure, vibration), shift timestamps, and raw material vendor lots.
-
-#### **Step 8: Potential Contributing Factors**
-* **Objective:** Identify statistical correlations between process parameters and defect occurrence.
-* **Details:** Generates evidence-weighted hypothesis rankings:
-  1. Process parameter variation (87% confidence)
-  2. Batch material difference (72% confidence)
-  3. Machine condition / S3 degradation (61% confidence)
-  4. Temperature variation (34% confidence)
-
-#### **Step 9: Impact Analysis**
-* **Objective:** Map defect rates to production flow bottlenecks and quality loss metrics.
-* **Details:**
-  * **Production Impact:** Throughput ($\downarrow$), Work-In-Process WIP ($\uparrow$), Unplanned Downtime ($\uparrow$).
-  * **Quality Impact:** Scrap Volume ($\uparrow$), Rework Loop Workload ($\uparrow$).
-
-#### **Step 10: Financial Loss Estimation**
-* **Objective:** Translate physical defects and production bottlenecks into exact monetary figures.
-* **Details:** Computes monetary loss breakdowns:
-  * **Scrap Cost:** ₹1.20L
-  * **Rework Cost:** ₹0.65L
-  * **Downtime Cost:** ₹0.40L
-  * **Production Loss / Shortfall:** ₹0.80L
-  * **Total Estimated Financial Loss:** **₹3.05L**
+7. **Self-Audit of Accuracy & Leakage**:
+   An offline audit script computes 64-bit dHash pairwise Hamming distance to identify near-duplicates ($d \le 5$) between train and test splits, and stress-tests model accuracy under 4 physical optical perturbations (Gaussian blur, underexposure $0.5\times$, overexposure $1.5\times$, JPEG quality 30).
+   *Verified in [`scripts/ml/robustness_check.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/robustness_check.py) and [`reports/robustness_report.md`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/reports/robustness_report.md).*
 
 ---
 
-### Phase 3: Recommendations, What-If Simulation & Human Review (Steps 11–14)
+## 3. System Architecture
 
-#### **Step 11: Recommendation Engine**
-* **Objective:** Generate prioritized, actionable risk-mitigation strategies.
-* **Details:** Recommends specific engineering interventions:
-  * Check Station S3 process parameter limits
-  * Inspect raw material batch B17
-  * Verify mechanical equipment calibration
-  * Increase inspection sampling frequency on suspect lines
+```mermaid
+flowchart TD
+    subgraph UI ["Frontend Interface (React 18 + Vite + Tailwind CSS)"]
+        Upload[Specimen Image Upload]
+        ResultView[Analysis Result & Heatmap View]
+        ReviewActions[Approve / Edit / Reject Controls]
+        CostForm[Custom Economics Input Form]
+        DriftCard[Batch Drift Monitoring Card]
+    end
 
-#### **Step 12: What-If Simulator**
-* **Objective:** Predict outcome metrics under hypothetical process adjustments before live line changes.
-* **Details:** Evaluates scenarios such as *“Reduce Station S3 cycle time by 10%”*:
-  * Expected Defect Rate: $8.0\% \rightarrow 3.5\%$
-  * Expected Production Throughput: $\uparrow$
-  * Estimated Loss Reduction: ₹3.00L $\rightarrow$ ₹1.35L
-  * Cost of Intervention: ₹0.50L
-  * **Net Financial Benefit:** **₹1.15L**
+    subgraph Vision ["Layer 1: Visual Inspection & Quality Gate"]
+        OpenCVGate["OpenCV Quality Gate\n(Sharpness >= 80, Luminance [30, 240])"]
+        Model["EfficientNet-B0 Classifier\n(5 Classes + Softmax Distribution)"]
+        Uncertainty["Uncertainty Gate\n(Conf < 0.85 | Margin < 0.15 | Entropy > 0.60)"]
+        GradCAM["Grad-CAM Engine\n(Visual Attention Heatmap Overlay)"]
+    end
 
-#### **Step 13: Financial Outcome Comparison**
-* **Objective:** Provide executive ROI and net benefit trade-off analysis.
-* **Details:** Compares baseline current loss vs. projected loss post-intervention, intervention cost, net savings, and projected profit margin improvement.
+    subgraph Linkage ["Layer 2: Production Linkage & Root Cause"]
+        SimLinkage["Simulated Deterministic Linkage\n(Station ID, Batch ID, Telemetry)"]
+        RootCause["Root-Cause Synthesis Engine\n(Evidence-Weighted Hypothesis Ranking)"]
+    end
 
-#### **Step 14: Human / Engineer Review**
-* **Objective:** Ensure human-in-the-loop decision governance before executing operational changes.
-* **Details:** Process engineers inspect evidence hypotheses, review what-if trade-offs, and explicitly **Approve** or **Reject** recommended actions.
+    subgraph Flow ["Layer 3: Discrete-Event Flow Dynamics"]
+        Bottleneck["Bottleneck Intelligence Engine\n(Utilization Imbalance, Queue Pressure)"]
+        Drift["Drift Engine\n(KS Test, PSI, CUSUM)"]
+    end
 
----
+    subgraph Economics ["Layer 4: Unit Economics & Range Modeling"]
+        MonteCarlo["Monte Carlo Simulator (N=500, Seed 42)\n(p10, p50, p90 Ranges for Profit & Margin)"]
+    end
 
-### Phase 4: Execution, Closed-Loop Monitoring & Continuous Learning (Steps 15–17)
+    subgraph Decision ["Layer 5: Decision Support & RAG Knowledge"]
+        RAG["Knowledge Retriever\n(Engineering Markdown KB Guides)"]
+        Assistant["Factory Assistant Copilot\n(Gemini Reasoning + Deterministic Fallback)"]
+    end
 
-#### **Step 15: Implement & Monitor**
-* **Objective:** Track operational metrics post-intervention in real time.
-* **Details:** Continuously monitors defect rates, line throughput, and financial performance against historical baselines.
+    subgraph Store ["Layer 6: Human Review & Case Persistence"]
+        DB[(PostgreSQL / SQLite Fallback\nDefectCaseReview Table)]
+        Registry["In-Memory Case Registry\n(Rebuilt from DB on Startup)"]
+    end
 
-#### **Step 16: Did It Work? (Validation Gate)**
-* **Objective:** Evaluate whether the implemented intervention achieved predicted ROI.
-* **Details:**
-  * **YES:** Record case outcome as an organizational best practice.
-  * **NO:** Reopen investigation engine, adjust confidence weights, and evaluate alternative hypotheses.
+    Upload --> OpenCVGate
+    OpenCVGate --> Model
+    Model --> Uncertainty
+    Model --> GradCAM
+    Uncertainty --> ResultView
+    GradCAM --> ResultView
 
-#### **Step 17: Continuous Learning**
-* **Objective:** Expand institutional knowledge and continuously fine-tune system models.
-* **Details:** Stores case histories, updates root-cause probability trees, and retrains anomaly models—ensuring that **every solved case makes ForgeMind AI smarter**.
+    Model --> SimLinkage
+    SimLinkage --> RootCause
+    RootCause --> Bottleneck
+    Bottleneck --> Drift
+    Drift --> DriftCard
 
----
+    Model --> MonteCarlo
+    CostForm --> MonteCarlo
+    MonteCarlo --> ResultView
 
-## 5. System Architecture & Provenance Data Tagging
+    Model --> RAG
+    RAG --> Assistant
+    RAG --> ResultView
 
-ForgeMind AI enforces a strict multi-layer architecture where outputs are tagged at the exact point of generation to maintain complete data provenance:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   DASHBOARD / DECISION-SUPPORT UI               │
-│  17-Step Causal View · Bottleneck Map · What-If Simulator Panel  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│                  WHAT-IF SIMULATION LAYER                       │
-│  Runs hypothetical scenarios (cycle time, threshold adjustments)│
-│  Tags outputs: [SIMULATED]                                      │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│                  ECONOMIC IMPACT LAYER                          │
-│  Scrap/rework cost · Downtime cost · Production shortfall loss  │
-│  Tags outputs: [CALCULATED] / [ESTIMATED]                       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│             PRODUCTION FLOW / BOTTLENECK LAYER                  │
-│  Cycle time · Utilization · WIP accumulation · Downtime         │
-│  Tags outputs: [MEASURED] (raw) / [CALCULATED] (derived)        │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│            CORRELATION & ROOT-CAUSE LAYER                       │
-│  Joins Quality + Process + Flow on shared keys (Station/Batch)  │
-│  Tags outputs: [ESTIMATED] (Hypotheses + Confidence Scores)    │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│             QUALITY & DETECTION LAYER                           │
-│  OpenCV pre-processing · YOLO defect detection & classification│
-│  Tags outputs: [MEASURED] (Images) / [ESTIMATED] (ML Confidence)│
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│                    DATA INGESTION LAYER                         │
-│  Batch metadata · Telemetry sensor logs · Production schedules   │
-└─────────────────────────────────────────────────────────────────┘
+    ResultView --> ReviewActions
+    ReviewActions --> DB
+    DB --> Registry
+    Registry -.->|Fast Reuse on Repeat Defect| ResultView
 ```
 
-### Provenance Data Tagging Standard
-* `[MEASURED]` — Directly read from sensor logs, image metadata, or production database records.
-* `[CALCULATED]` — Derived deterministically using mathematical formulas (e.g., WIP accumulation, scrap loss).
-* `[ESTIMATED]` — Produced by statistical correlation or ML models with explicit uncertainty bounds.
-* `[SIMULATED]` — Generated by What-If simulation scenarios under hypothetical parameters.
+### Architectural Layers
+- **Vision Layer**: Validates input image integrity with OpenCV (Laplacian variance $\ge 80.0$, mean brightness $[30, 230]$). Executes forward pass through EfficientNet-B0, calculates logit margin and normalized Shannon entropy, and overlays a Grad-CAM visual attention heatmap.
+- **Root Cause & Linkage Layer**: Computes a deterministic hash linkage connecting inspection specimens to synthetic workstation IDs (`Station_1` to `Station_3`), batch identifiers, and operational telemetry.
+- **Flow Dynamics Layer**: Models work-center cycle times, queue pressures, and utilization imbalances based on discrete-event manufacturing datasets (Mendeley DOI: 10.17632/3rw227zxt7.2).
+- **Economics Layer**: Computes baseline point estimates and Monte Carlo range projections ($p_{10}$, $p_{50}$, $p_{90}$) for scrap losses, rework costs, total financial exposure, and run profit margins.
+- **Decision & RAG Layer**: Performs keyword-indexed retrieval across structured engineering knowledge guides (`data/engineering_knowledge/`) and augments the factory assistant copilot via Google Gemini with deterministic RAG fallback.
+- **Human Review & Persistence Layer**: Mediates human validation (Approve/Edit/Reject) and maintains persistent state in PostgreSQL (`defect_case_reviews`) with in-memory fallback.
 
 ---
 
-## 6. Core Analytical & Engine Architecture
+## 4. Features Mapped to Operational Requirements
 
-The backend computation of ForgeMind AI is powered by specialized analytical engines located in [`scripts/forgemind/`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind):
-
-1. **ML Engine ([`ml_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/ml_engine.py)):**
-   * Manages Scikit-Learn models (`RandomForestRegressor`, `IsolationForest`) for anomaly detection and defect probability scoring.
-2. **Root Cause Engine ([`root_cause_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/root_cause_engine.py)):**
-   * Computes evidence-weighted statistical correlations between process parameters, station parameters, batch metadata, and defect occurrences.
-3. **Bottleneck Engine ([`bottleneck_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/bottleneck_engine.py)):**
-   * Evaluates station cycle times, WIP accumulation, equipment utilization, and throughput constraints to locate production bottlenecks.
-4. **Economic Engine ([`economic_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/economic_engine.py)):**
-   * Quantifies financial losses (scrap cost, rework cost, downtime cost, shortfall cost) and profit margin erosion.
-5. **Recommendation Engine ([`recommendation_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/recommendation_engine.py)):**
-   * Generates ranked, context-aware corrective actions and engineering risk mitigations.
-6. **Simulation Engine ([`simulation_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/simulation_engine.py)):**
-   * Runs what-if scenarios modeling intervention impacts on defect rates, production throughput, intervention costs, and net ROI.
-
----
-
-## 7. Technology Stack
-
-* **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS
-* **Backend:** Python 3.10+ + FastAPI + Uvicorn + Pydantic v2
-* **Data Processing & ML:** Pandas + NumPy + Scikit-Learn + OpenCV
-* **Database:** PostgreSQL (SQLAlchemy ORM + psycopg2)
-* **Testing:** Pytest (Comprehensive unit & integration test suite)
-* **Deployment:** Vercel (Frontend SPA) + Render (Backend Web Service & Managed PostgreSQL)
+| Operational Requirement | How It Is Addressed in ForgeMind AI | Implementation Status | Key Codebase Files |
+| :--- | :--- | :---: | :--- |
+| **Surface Defect Classification** | EfficientNet-B0 fine-tuned on 5 discrete classes (Crack, Normal, Hole, Scratch, Rust). | **Implemented** | [`scripts/ml/model.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/model.py), [`scripts/ml/inference_service.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/inference_service.py) |
+| **Spatial Defect Localization** | Coarse spatial feature-attribution heatmap via Grad-CAM (final convolutional layer). *Note: Provides visual attention area, not precise bounding boxes.* | **Implemented (Heatmap)**<br>*Roadmap (Bounding Boxes)* | [`scripts/ml/gradcam.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/gradcam.py) |
+| **Optical Quality Validation** | OpenCV Laplacian variance sharpness check and luminance bounds evaluation before inference. | **Implemented** | [`scripts/ml/opencv_quality.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/opencv_quality.py) |
+| **Out-of-Distribution Rejection** | Multi-factor uncertainty heuristic: confidence $< 0.85$, margin $< 0.15$, or normalized entropy $> 0.60$. *Note: Proxy heuristic; not a dedicated generative OOD model.* | **Implemented (Proxy)**<br>*Roadmap (PatchCore)* | [`scripts/ml/inference_service.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/inference_service.py) |
+| **Inspection-to-Station Linkage** | Deterministic hash mapping generating synthetic station ID, batch ID, and operational context. *Note: Simulated linkage, not physical MES telemetry.* | **Implemented (Simulated)**<br>*Roadmap (Live MES)* | [`scripts/forgemind/simulated_linkage.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/simulated_linkage.py) |
+| **Process Bottleneck Diagnosis** | Workstation utilization imbalance, queue pressure, and throughput analysis on discrete-event data. | **Implemented** | [`scripts/forgemind/bottleneck_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/bottleneck_engine.py) |
+| **Batch Drift Detection** | Sequential batch monitoring using two-sample KS test, Population Stability Index (PSI), and CUSUM. | **Implemented** | [`scripts/forgemind/drift_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/drift_engine.py) |
+| **Profit & Margin Estimation** | Monte Carlo range modeling (500 samples, fixed seed 42) computing $p_{10}$, $p_{50}$, $p_{90}$ financial ranges. | **Implemented** | [`scripts/forgemind/economic_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/economic_engine.py) |
+| **Action Recommendation** | Retrieval across curated engineering standard operating procedures (SOPs). | **Implemented** | [`scripts/forgemind/cure_prevention_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/cure_prevention_engine.py), [`scripts/ml/knowledge_retriever.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/knowledge_retriever.py) |
+| **Human Review Persistence** | SQLAlchemy model `DefectCaseReview` storing approval, edit, reject decisions and reloaded on startup. | **Implemented** | [`backend/models.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/models.py), [`scripts/forgemind/cure_prevention_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/cure_prevention_engine.py) |
+| **Repeat Fix Auto-Retrieval** | Historical case library matching repeat defects to previously approved actions for instant reuse. | **Implemented** | [`scripts/forgemind/cure_prevention_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/cure_prevention_engine.py) |
+| **Verification Gate** | Case lifecycle outcome recording (`VERIFIED` vs `DEFECT_RECURRED`). | **Implemented** | [`scripts/forgemind/cure_prevention_engine.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/forgemind/cure_prevention_engine.py) |
 
 ---
 
-## 8. Local Development Setup
+## 5. Technology Stack
+
+| Layer | Technologies & Dependencies | Source Reference |
+| :--- | :--- | :--- |
+| **Frontend UI** | React 18.3, TypeScript 5.6, Vite 5.4, Tailwind CSS 3.4, React Router 7.18, Firebase 12.19 | [`frontend/package.json`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/frontend/package.json) |
+| **Backend API** | Python 3.10+, FastAPI 0.110+, Uvicorn 0.28+, Pydantic 2.6+, Python-Dotenv 1.0+ | [`requirements.txt`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/requirements.txt), [`backend/server.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/server.py) |
+| **Database & ORM** | PostgreSQL, SQLAlchemy 2.0+, Psycopg2-binary 2.9+ (with in-memory fallback) | [`backend/database.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/database.py), [`backend/models.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/models.py) |
+| **Vision & ML** | PyTorch 2.1+, Torchvision, OpenCV 4.x/5.0, Pillow, ImageHash 4.3+ | [`scripts/ml/model.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/model.py), [`scripts/ml/inference_service.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/inference_service.py) |
+| **Data Analytics** | Pandas 2.0+, NumPy 1.24+, Scikit-learn 1.3+, SciPy 1.10+ | [`requirements.txt`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/requirements.txt) |
+| **AI Copilot** | Google Gemini API (`gemini-2.5-flash` reasoning) with deterministic RAG fallback | [`scripts/ml/gemini_reasoning.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/scripts/ml/gemini_reasoning.py) |
+| **Testing** | Pytest 7.3+, Coverage 7.1+ (119 automated passing tests) | [`tests/`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/tests/) |
+| **Deployment** | Render Web Service + Managed PostgreSQL (`render.yaml`) | [`render.yaml`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/render.yaml) |
+
+---
+
+## 6. Model Performance & Robustness Audit
+
+### Model Architecture & Training Setup
+- **Architecture**: `EfficientNet-B0` (Pretrained on ImageNet-1k, customized 5-class linear head with dropout 0.2).
+- **Checkpoint**: `models/efficientnet_b0_forgemind_best.pth`.
+- **Dataset Size**: 10,726 industrial inspection images across 5 classes (`Crack`: 2,400, `Normal`: 2,400, `Hole`: 2,400, `Scratch`: 2,400, `Rust`: 1,126).
+- **Split Strategy**: Stratified 70% Train (7,508 images), 15% Validation (1,609 images), 15% Held-Out Test (1,609 images), random seed 42.
+
+### Held-Out Test Split Performance
+*Source: [`reports/classification_report.txt`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/reports/classification_report.txt)*
+
+- **Overall Accuracy**: **98.20%** (1,580 / 1,609 correct)
+- **Macro F1-Score**: **98.30%** *(Source: `classification_report.txt`)*
+- **Macro Precision**: **98.30%** | **Macro Recall**: **98.33%**
+
+| Defect Class | Support | Precision | Recall (Sensitivity) | F1-Score |
+| :--- | :---: | :---: | :---: | :---: |
+| **Crack** | 360 | 98.85% | 95.56% | 97.18% |
+| **Normal** | 360 | 94.67% | 98.61% | 96.60% |
+| **Hole** | 360 | 99.17% | 99.44% | 99.31% |
+| **Scratch** | 360 | 100.00% | 98.61% | 99.30% |
+| **Rust** | 169 | 98.82% | 99.41% | 99.12% |
+
+> [!NOTE]
+> **Source Discrepancy Notice**: `reports/classification_report.txt` evaluates the unpartitioned held-out test split, reporting **98.30% Macro F1**. In contrast, `reports/robustness_report.md` evaluates the split divided into distinct and near-duplicate subsets, yielding an aggregated Macro F1 of **97.51%**. The 98.30% figure from `classification_report.txt` is cited as the primary benchmark.
+
+### Train-Test Leakage Audit (dHash Analysis)
+*Source: [`reports/robustness_report.md`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/reports/robustness_report.md)*
+
+Using 64-bit perceptual difference hashing (`dHash`, $8\times8$), pairwise Hamming distances between all 7,508 training images and 1,609 test images were computed:
+- **Exact Matches ($d = 0$)**: 170 images (**10.57%**)
+- **Near-Duplicates ($d \le 5$ bits)**: 707 images (**43.94%**)
+- **Distinct Images ($d > 5$ bits)**: 902 images (**56.06%**)
+- **Mean Minimum Distance**: 7.09 bits (Median: 6.0 bits)
+
+#### Leakage-Controlled Generalization Comparison:
+Evaluating the model across the isolated subsets reveals the effect of near-duplicate leakage:
+
+| Metric | Distinct Test Subset ($d > 5$, N=902) | Near-Duplicate Subset ($d \le 5$, N=707) | Full Held-Out Split (N=1,609) |
+| :--- | :---: | :---: | :---: |
+| **Raw Top-1 Accuracy** | **99.11%** | **97.03%** | **98.20%** |
+| **Macro F1-Score** | **98.68%** | **96.02%** | **97.51%** |
+| **Filtered / Accepted Accuracy** | **100.00%** *(on 87.25% accepted)* | **100.00%** *(on 73.69% accepted)* | **100.00%** *(on 81.29% accepted)* |
+| **Flagged "Uncertain / Novel"** | **12.75%** | **26.31%** | **18.71%** |
+| **Mean Prediction Confidence** | 94.23% | 88.95% | 91.91% |
+
+*Key finding: The model maintains **99.11% accuracy** on novel, distinct images ($d > 5$). The near-duplicate subset is dominated by uniform defect-free metal surfaces (284 of 360 normal test images are near-duplicates), where subtle surface reflectance variations trigger higher uncertainty.*
+
+### Optical Perturbation Stress Testing
+*Evaluated on a 300-image random test subset (`seed=42`). Source: [`reports/robustness_report.md`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/reports/robustness_report.md)*
+
+| Condition | Physical Optical Stress | Raw Top-1 Acc | Filtered / Accepted Acc* | Share Flagged Uncertain / Novel | Mean Confidence |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **Clean Baseline** | Unperturbed test images | **98.67%** | **100.00%** *(on 82.0% accepted)* | **18.00%** | 92.72% |
+| **Gaussian Blur** | Defocused lens / vibration ($\sigma=1.5$, $7\times7$) | **87.00%** | **100.00%** *(on 39.3% accepted)* | **60.67%** | 74.81% |
+| **Brightness $\times 0.5$** | 50% underexposure / shadowing | **97.00%** | **100.00%** *(on 73.7% accepted)* | **26.33%** | 88.23% |
+| **Brightness $\times 1.5$** | 150% overexposure / surface glare | **90.67%** | **100.00%** *(on 66.0% accepted)* | **34.00%** | 84.06% |
+| **JPEG Quality 30** | Lossy edge sensor compression | **89.00%** | **100.00%** *(on 46.0% accepted)* | **54.00%** | 73.38% |
+
+> [!IMPORTANT]
+> **Conditional Accuracy Notice**: "100.00% Accepted Accuracy" is strictly conditional on the share of samples flagged as uncertain. For example, under Gaussian blur, the model achieves 100% accuracy on the accepted samples by safely abstaining on and flagging **60.67%** of the degraded specimens for human review.
+
+---
+
+## 7. Getting Started
 
 ### Prerequisites
-* Python 3.10 or higher
-* Node.js v18 or higher
-* PostgreSQL (optional for local sqlite fallback or local postgres)
+- Python 3.10 or higher
+- Node.js 18.0+ and npm
+- PostgreSQL (optional; the platform automatically falls back to in-memory registry if PostgreSQL is unavailable)
 
-### Step 1: Configure Environment Variables
-Copy the example environment file and configure local database credentials:
+### 1. Clone & Environment Configuration
 ```bash
+git clone https://github.com/Yogender-verma/ForgeMind-Ai.git
+cd "ForgeMind AI"
+
+# Copy the environment template
 cp .env.example .env
 ```
 
-### Step 2: Set Up Backend Environment
-Install Python dependencies:
+Configure your `.env` with appropriate placeholders (do not commit real secrets):
+```ini
+ENVIRONMENT=development
+PORT=8000
+HOST=0.0.0.0
+DATABASE_URL=postgresql+psycopg2://forgemind_user:your_password@localhost:5432/forgemind
+ALLOWED_ORIGINS=*
+
+# Optional: Google Gemini API key (falls back to deterministic RAG if omitted)
+GEMINI_API_KEY=your_gemini_api_key_placeholder
+
+# Frontend API URL
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+### 2. Dataset & Model Checkpoint Setup
+Both the raw dataset and trained model weights are gitignored due to file size.
+
+1. **Model Checkpoint**:
+   Ensure `models/efficientnet_b0_forgemind_best.pth` exists. If training from scratch:
+   ```bash
+   python train.py --epochs 15 --batch-size 32
+   ```
+2. **Dataset**:
+   Ensure `dataset/splits/train.csv`, `validation.csv`, and `test.csv` exist in `dataset/splits/`. If starting from raw images:
+   ```bash
+   python prepare_dataset.py
+   ```
+
+### 3. Backend Setup
 ```bash
+# Create and activate virtual environment (optional but recommended)
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
+# Install Python dependencies
 pip install -r requirements.txt
-```
 
-Run the FastAPI backend server:
-```bash
-uvicorn backend.server:app --host 127.0.0.1 --port 8000 --reload
+# Start FastAPI backend server
+uvicorn backend.server:app --reload --host 0.0.0.0 --port 8000
 ```
-* **Interactive OpenAPI Swagger Docs:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-* **ReDoc Documentation:** [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+*The database schema (`init_db()`) and case review registry are automatically initialized on startup.*
 
-### Step 3: Set Up Frontend SPA
-In a separate terminal window:
+### 4. Frontend Setup
 ```bash
 cd frontend
+
+# Install node dependencies
 npm install
+
+# Start Vite development server
 npm run dev
 ```
-* Access the interactive React dashboard at [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### 5. Running Automated Tests
+Execute the comprehensive test suite:
+```bash
+pytest
+```
+*Current test suite status: **119 passed in ~52s** (0 failures).*
 
 ---
 
-## 9. Automated Testing
+## 8. API Overview
 
-Run the full automated test suite verifying analytical engines, database schemas, and FastAPI endpoints:
-```bash
-pytest -v tests/
+All routes are implemented in [`backend/server.py`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/backend/server.py) and documented interactively at `/docs`:
+
+| Method | Endpoint Path | Primary Purpose | Trust Tag |
+| :--- | :--- | :--- | :---: |
+| `GET` | `/api/status` | System health check, active models, and PostgreSQL connectivity status | System |
+| `GET` | `/api/models` | Metadata and station topologies for Model 1 (3-station) and Model 2 (dual-part) | `[MEASURED]` |
+| `GET` | `/api/process-health` | Work-center capacity, queue pressure, and utilization metrics | `[CALCULATED]` |
+| `GET` | `/api/bottlenecks` | Line bottleneck diagnosis using station cycle time and buffer occupancy | `[CALCULATED]` |
+| `GET` | `/api/root-causes` | Evidence-weighted synthesis correlating bottlenecks to line telemetry | `[HYPOTHESIS_ONLY]` |
+| `GET` | `/api/ml/feature-importance` | Random Forest feature importance modeling for throughput drivers | `[ESTIMATED]` |
+| `GET` | `/api/ml/anomalies` | Isolation Forest anomaly detection across station telemetry streams | `[ESTIMATED]` |
+| `POST` | `/api/v1/classify-image` | EfficientNet-B0 defect classification, OpenCV quality check, and Grad-CAM | Visual ML |
+| `POST` | `/api/v1/investigate-defect` | Multi-modal defect investigation linking visual defect to station context | `[SIMULATED]` |
+| `GET` | `/api/v1/drift` | Batch drift detection across rolling windows (KS test, PSI, CUSUM) | `[SIMULATED]` |
+| `POST` | `/api/v1/economic/custom` | Monte Carlo range calculation ($p_{10}, p_{50}, p_{90}$) from user costs | `SIMULATED RANGE` |
+| `GET` | `/api/v1/economic/what-if` | Containment action cost-benefit comparison trade-offs | `[ESTIMATED]` |
+| `GET` | `/api/v1/cases` | List all historical defect cases from PostgreSQL / in-memory store | Persistent |
+| `GET` | `/api/v1/cases/similar` | Retrieve approved historical cases matching a specific defect type | Persistent |
+| `POST` | `/api/v1/cases/{case_id}/approve` | Persist human approval of recommended engineering action | `[USER CONFIRMED]` |
+| `POST` | `/api/v1/cases/{case_id}/edit` | Persist customized action text and reviewer notes | `[USER CONFIRMED]` |
+| `POST` | `/api/v1/cases/{case_id}/reject` | Reject recommendation with mandatory logged reason | `[USER CONFIRMED]` |
+| `POST` | `/api/v1/cases/{case_id}/verify` | Verify action efficacy (`VERIFIED` vs `DEFECT_RECURRED`) | Lifecycle |
+| `POST` | `/api/v1/factory-assistant/chat` | AI factory copilot chat (Gemini reasoning + deterministic RAG fallback) | Decision |
+| `POST` | `/api/simulation/run` | Execute discrete-event manufacturing simulation under custom parameters | `[SIMULATED]` |
+
+---
+
+## 9. Demonstration Walkthrough
+
+Follow these steps to verify the end-to-end intelligence workflow:
+
+1. **Inspect a Clear Defect**:
+   - In the frontend, navigate to **Analysis** and upload a specimen image (e.g. `dataset/raw/crack/crack_00008.png`).
+   - The system displays the predicted class (**Crack**), confidence score ($> 95\%$), and an interactive Grad-CAM heatmap highlighting visual fractures.
+2. **Inspect an Ambiguous / Degraded Image**:
+   - Upload an overexposed, blurry, or low-contrast image.
+   - The multi-factor uncertainty gate triggers, returning **"Uncertain / Novel"** with a advisory notice: *"needs human review, possible novel defect"*.
+3. **Conduct Human Review (Approve, Edit, or Reject)**:
+   - Click **Approve** to accept the recommended fix, **Edit** to modify the action with a custom note, or **Reject** with a mandatory reason.
+   - The updated decision and timestamp are immediately displayed and persisted to PostgreSQL.
+4. **Demonstrate Repeat Defect Reuse**:
+   - Upload another image of the same defect category.
+   - The platform identifies the historical match and displays the previously approved action beside an **"Apply Previous Action"** button for instant one-click validation.
+   - Restart the backend server (`uvicorn`) and repeat the inspection; the approved action is restored seamlessly from PostgreSQL.
+5. **Monitor Batch Drift on Dashboard**:
+   - Navigate to the **Dashboard**.
+   - Review the **Batch Drift Monitoring** card showing PSI bar charts and KS test $p$-values across rolling 100-run windows, flagging shifted batches with advisory investigation tags.
+6. **Simulate Custom Economic Ranges**:
+   - In the **Economic Impact** panel, enter custom parameters (e.g., Unit Price = \$250, Scrap Cost = \$85, Rework Cost = \$40).
+   - Click **Calculate Custom Impact**. The system generates 500 Monte Carlo runs and displays $p_{10}$, $p_{50}$, and $p_{90}$ ranges for run profit and total defect losses labeled `SIMULATED RANGE`.
+
+---
+
+## 10. Safety, Scope & Operational Boundaries
+
+ForgeMind AI is designed strictly as an **advisory and decision-support tool**:
+- **No Machine Control**: The software has zero direct connection to Programmable Logic Controllers (PLCs), Industrial Robots, Computer Numerical Control (CNC) machinery, or emergency stop circuits.
+- **No Direct Actuation**: Recommendations must be validated and physically implemented by qualified manufacturing personnel.
+- **Simulated Figures**: Financial calculations and station linkages are mathematical approximations and discrete-event simulations, not certified accounting or ERP ledgers.
+
+---
+
+## 11. Known Limitations
+
+In the interest of engineering transparency, the following technical limitations are documented:
+
+1. **Train-Test Near-Duplicate Overlap (43.94%)**:
+   Perceptual dHash analysis reveals that 43.94% of test images share near-duplicate visual characteristics ($d \le 5$) with the training set, particularly uniform defect-free metal specimens. While accuracy on completely distinct images remains high (99.11%), split deduplication is recommended for future dataset iterations.
+2. **Normal Surface Rejection Rate**:
+   Because uniform defect-free metal surfaces have minimal edge features, subtle illumination shifts produce diffuse softmax distributions. As a result, the uncertainty gate flags a substantial proportion of clean `Normal` images (up to 40–60%) for review.
+3. **Simulated Production Linkage**:
+   The correlation between an uploaded image and a specific workstation or batch ID is a deterministic synthetic mapping, not physical line RFID/barcode tracking.
+4. **Coarse Spatial Attribution**:
+   Grad-CAM heatmaps highlight general activation areas corresponding to the $7\times7$ receptive fields of the final convolutional layer. They do not represent millimeter-accurate bounding boxes or pixel segmentation contours.
+
+---
+
+## 12. Roadmap
+
+The following enhancements are planned for future releases:
+- [ ] **Bounding-Box Defect Localization**: Integrate YOLOv8 / RT-DETR for bounding-box coordinate detection and millimeter defect sizing.
+- [ ] **Dedicated OOD Detection Model**: Replace heuristic uncertainty gating with deep feature-space novelty detection (e.g., PatchCore or Mahalanobis distance embeddings).
+- [ ] **Cost-Aware Review Thresholds**: Dynamically adjust confidence rejection thresholds based on defect financial risk (e.g., stringent thresholds for costly structural cracks vs. lenient thresholds for cosmetic scratches).
+- [ ] **Vector-Search Historical Case Matching**: Transition historical case retrieval to pgvector / FAISS embeddings for semantic multi-case ranking.
+- [ ] **Physical MES / SCADA Integration**: Implement OPC-UA and MQTT telemetry connectors for live line integration.
+
+---
+
+## 13. Project Structure
+
+```
+ForgeMind AI/
+├── backend/                        # FastAPI Backend Service
+│   ├── database.py                 # SQLAlchemy engine & session management
+│   ├── models.py                   # DefectCaseReview PostgreSQL ORM model
+│   ├── schemas.py                  # Pydantic request/response schemas
+│   └── server.py                   # REST API routes and lifespan hooks
+├── frontend/                       # React + TypeScript Web Application
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── analysis/           # Visual inspection, Grad-CAM, human review
+│   │   │   ├── dashboard/          # Process KPIs, batch drift monitoring
+│   │   │   ├── economics/          # Monte Carlo range forms & what-if views
+│   │   │   └── simulation/         # Discrete-event simulation workbench
+│   │   └── services/               # API clients and data transformers
+│   └── package.json                # Frontend dependencies and Vite configuration
+├── dataset/                        # Quality Inspection Dataset & Splits (Gitignored)
+│   ├── raw/                        # Raw image folders (crack, normal, hole, scratch, rust)
+│   └── splits/                     # Stratified 70/15/15 CSV split manifests
+├── models/                         # Trained Weights & Configuration (Gitignored)
+│   ├── efficientnet_b0_forgemind_best.pth  # PyTorch model checkpoint
+│   ├── class_names.json            # Taxonomy class mapping
+│   └── model_config.json           # Model architecture metadata
+├── reports/                        # Verification, Audit & Benchmark Reports
+│   ├── classification_report.txt   # Official scikit-learn held-out test metrics (98.20% Acc)
+│   ├── confusion_matrix.png        # Publication-quality test confusion matrix
+│   └── robustness_report.md        # Perceptual dHash leakage & perturbation audit
+├── scripts/                        # Core Engineering & Analytics Engines
+│   ├── forgemind/                  # Manufacturing process engines
+│   │   ├── bottleneck_engine.py    # Station utilization and queue pressure
+│   │   ├── cure_prevention_engine.py # SOP retrieval, review actions & verification
+│   │   ├── drift_engine.py         # Batch drift detection (KS test, PSI, CUSUM)
+│   │   ├── economic_engine.py      # Monte Carlo simulated profit ranges
+│   │   └── simulated_linkage.py    # Deterministic station/batch mapping
+│   └── ml/                         # Machine learning & inference service
+│       ├── gradcam.py              # PyTorch Grad-CAM heatmap generator
+│       ├── inference_service.py    # Production inference & uncertainty gate
+│       ├── model.py                # EfficientNet-B0 architecture definition
+│       ├── opencv_quality.py       # Laplacian blur & luminance quality filter
+│       └── robustness_check.py     # Offline dHash leakage & perturbation audit
+├── tests/                          # Automated Pytest Suite (119 passing tests)
+│   ├── test_backend.py             # API route unit and integration tests
+│   ├── test_cure_prevention.py     # Review action persistence & verification tests
+│   ├── test_manufacturing_integration.py # Drift and process engine tests
+│   └── test_unit_economic_impact.py # Monte Carlo range tests
+├── prepare_dataset.py              # Dataset splitting and manifest generator
+├── train.py                        # Model training script
+├── requirements.txt                # Python production dependencies
+├── render.yaml                     # Render deployment configuration
+└── README.md                       # Comprehensive documentation
 ```
 
 ---
 
-## 10. Production Deployment
+## 14. License & Team
 
-### Frontend Deployment (Vercel)
-1. Import the repository into **Vercel**.
-2. Set **Root Directory** to `frontend`.
-3. Select **Vite** framework preset.
-4. Add environment variable:
-   `VITE_API_BASE_URL=https://your-backend-render-service.onrender.com`
-5. Click **Deploy**.
-
-### Backend & Database Deployment (Render)
-1. Connect the repository to **Render**.
-2. Render detects [`render.yaml`](file:///c:/Users/Yogendar/Downloads/ForgeMind%20AI/render.yaml) blueprint and provisions:
-   * **`forgemind-db`**: PostgreSQL Managed Instance.
-   * **`forgemind-backend`**: FastAPI Web Service running `uvicorn backend.server:app --host 0.0.0.0 --port $PORT`.
-
----
-
-<p align="center">
-  <b>ForgeMind AI</b> — <i>Smarter Manufacturing. Lower Losses. Higher Profits. A Stronger Tomorrow.</i>
-</p>
+- **License**: MIT License (see `LICENSE` file if present, or contact repository maintainers).
+- **Authors & Contributors**: ForgeMind AI Engineering Team.
+- **Repository**: [https://github.com/Yogender-verma/ForgeMind-Ai](https://github.com/Yogender-verma/ForgeMind-Ai)

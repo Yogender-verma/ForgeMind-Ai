@@ -53,17 +53,23 @@ from backend.schemas import (
     PipelineResponse,
     SimulatedEconomicImpactRequest,
     CurePreventionApplyActionRequest,
+    CaseRejectRequest,
+    CaseEditRequest,
     CurePreventionStatusUpdateRequest,
     CurePreventionVerificationRequest,
     FactoryAssistantChatRequest,
     WhatIfSimulationRequest,
+    CustomEconomicRequest,
 )
 
 from scripts.forgemind.cure_prevention_engine import (
     search_similar_cases,
     apply_previous_action,
+    edit_case_action,
+    reject_case_action,
     update_case_workflow_status,
     verify_case_prevention,
+    rebuild_registry_from_db,
 )
 
 # ForgeMind Core Engines
@@ -77,6 +83,7 @@ from scripts.forgemind.economic_engine import (
     EconomicConfig,
     get_simulated_economic_impact,
     get_simulated_what_if_scenarios,
+    compute_economic_range,
 )
 from scripts.forgemind.simulation_engine import (
     SimulationScenario,
@@ -88,6 +95,7 @@ from scripts.forgemind.recommendation_engine import (
     generate_recommendations,
     format_recommendations_report,
 )
+from scripts.forgemind.drift_engine import detect_batch_drift
 
 log = logging.getLogger("forgemind.fastapi")
 
@@ -95,8 +103,12 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Attempt PostgreSQL table initialization on startup."""
+    """Attempt PostgreSQL table initialization and case review registry rebuild on startup."""
     init_db()
+    try:
+        rebuild_registry_from_db()
+    except Exception as err:
+        log.warning("Could not rebuild case registry on startup: %s", err)
     yield
 
 # Initialize FastAPI Application
@@ -384,6 +396,86 @@ def calculate_economic_what_if_endpoint(
         defect_type = payload.get("defect_type", payload.get("defect", defect_type))
     res = get_simulated_what_if_scenarios(defect_type=defect_type)
     return sanitize_value(res)
+
+
+# ---------------------------------------------------------------------------
+# Custom Economic Range Estimation (User-Input Monte Carlo)
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/economic/custom", tags=["Economic Engine"])
+def calculate_custom_economic_range(
+    payload: CustomEconomicRequest,
+):
+    """
+    Compute point estimates and Monte Carlo ranges (low / likely / high)
+    for profit, margin, and defect loss from user-entered cost inputs.
+    All values are [SIMULATED] and labelled 'computed from your inputs, simulated'.
+    """
+    try:
+        config = {
+            "unit_price": payload.unit_price,
+            "material_cost": payload.material_cost,
+            "scrap_cost": payload.scrap_cost,
+            "rework_cost": payload.rework_cost,
+            "units_per_run": payload.units_per_run,
+        }
+        defect_rate = max(0.001, min(payload.defect_rate, 0.999))
+        units = payload.units_per_run
+
+        # Point estimates
+        good_units = units * (1.0 - defect_rate)
+        defective_units = units * defect_rate
+        revenue = good_units * payload.unit_price
+        production_cost = units * payload.material_cost
+        loss_scrap = defective_units * 0.5 * payload.scrap_cost
+        loss_rework = defective_units * 0.5 * payload.rework_cost
+        total_loss = loss_scrap + loss_rework
+        profit = revenue - production_cost - total_loss
+        margin_pct = (profit / revenue * 100.0) if revenue > 0 else 0.0
+
+        # Monte Carlo ranges
+        ranges = compute_economic_range(config, defect_rate)
+
+        return sanitize_value({
+            "point_estimate": {
+                "estimated_profit_per_run": round(profit, 2),
+                "profit_margin_pct": round(margin_pct, 2),
+                "total_loss_from_defects": round(total_loss, 2),
+                "evidence_tag": "[SIMULATED]",
+                "guardrail_status": "computed from your inputs, simulated",
+            },
+            "ranges": ranges,
+            "config": config,
+            "defect_rate": defect_rate,
+            "evidence_tag": "[SIMULATED]",
+            "guardrail_status": "computed from your inputs, simulated",
+            "disclosure": (
+                "All values are simulated estimates computed from your inputs. "
+                "Not actual factory financial data. Advisory only."
+            ),
+        })
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Batch-to-Batch Drift Detection
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/drift", tags=["Drift Detection"])
+def get_batch_drift(
+    model: str = Query("1", description="Model identifier: 1, 2, Model_1, or Model_2"),
+):
+    """
+    Detect batch-to-batch statistical drift in Arena production datasets.
+    Uses KS-test, PSI, and CUSUM on sequential windows (simulated batches).
+    All results are [SIMULATED] with causal_status [HYPOTHESIS_ONLY].
+    """
+    model_key = "Model_2" if model in ("2", "Model_2") else "Model_1"
+    try:
+        ds = get_dataset(model_key)
+        result = detect_batch_drift(model_key=model_key, df=ds.df)
+        return sanitize_value(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/simulation/scenarios", tags=["What-If Simulation"])
@@ -844,8 +936,48 @@ def approve_case_action_endpoint(case_id: str, payload: CurePreventionApplyActio
         case_id=case_id,
         action_text=payload.action_text,
         user_note=payload.user_note,
+        defect_type=payload.defect_type,
     )
     return sanitize_value(res)
+
+
+@app.post("/api/v1/cases/{case_id}/edit", tags=["Historical Cases"])
+def edit_case_action_endpoint(case_id: str, payload: CaseEditRequest):
+    """
+    Human-in-the-loop action customization for a historical case recommendation.
+    Updates recommended action with engineer's custom action and persists to database.
+    """
+    try:
+        res = edit_case_action(
+            inspection_id=payload.inspection_id,
+            case_id=case_id,
+            edited_action=payload.edited_action,
+            reviewer_note=payload.reviewer_note,
+            defect_type=payload.defect_type,
+            recommended_action=payload.recommended_action,
+        )
+        return sanitize_value(res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@app.post("/api/v1/cases/{case_id}/reject", tags=["Historical Cases"])
+def reject_case_action_endpoint(case_id: str, payload: CaseRejectRequest):
+    """
+    Human-in-the-loop action rejection for a historical case recommendation.
+    Requires a reason for rejecting the recommendation and persists to database.
+    """
+    try:
+        res = reject_case_action(
+            inspection_id=payload.inspection_id,
+            case_id=case_id,
+            reason=payload.reason,
+            defect_type=payload.defect_type,
+            recommended_action=payload.recommended_action,
+        )
+        return sanitize_value(res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
 
 
 @app.post("/api/v1/cases/{case_id}/verify", tags=["Historical Cases"])

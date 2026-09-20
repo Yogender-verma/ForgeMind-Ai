@@ -100,9 +100,13 @@ export const analyzeInspectionImage = async (
 
   // Parse real predictions and probabilities from EfficientNet-B0
   const predClass = backendResult.prediction as DefectType;
+  const top1ClassRaw = backendResult.top1_class_raw as string | undefined;
+  const margin = backendResult.margin !== undefined ? Math.round(backendResult.margin * 1000) / 1000 : undefined;
+  const normalizedEntropy = backendResult.normalized_entropy !== undefined ? Math.round(backendResult.normalized_entropy * 1000) / 1000 : undefined;
+  const report = backendResult.report as string | undefined;
   const confidence = Math.round(backendResult.confidence * 1000) / 10; // e.g. 96.4
   const isDefective = backendResult.is_defective;
-  const isLowConfidence = backendResult.is_low_confidence;
+  const isLowConfidence = backendResult.is_low_confidence || predClass === 'Uncertain / Novel';
   const probabilities = backendResult.probabilities || {};
   const gradcamOverlay = backendResult.gradcam?.overlay_base64;
   const quality = backendResult.quality || {};
@@ -128,6 +132,10 @@ export const analyzeInspectionImage = async (
       year: 'numeric',
     }),
     prediction: predClass,
+    top1ClassRaw,
+    margin,
+    normalizedEntropy,
+    report,
     confidence,
     status: isLowConfidence ? 'Uncertain' : isDefective ? 'Defective' : 'Normal',
     severity,

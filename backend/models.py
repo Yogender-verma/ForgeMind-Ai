@@ -84,3 +84,43 @@ class AnalysisSnapshotRecord(Base):
             "evidence_summary": self.evidence_summary,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class DefectCaseReview(Base):
+    """
+    Stores human-in-the-loop review decisions and workflow state for defect cases in PostgreSQL.
+    Tracks approvals, edits, rejections, and verified effectiveness outcomes.
+    """
+    __tablename__ = "defect_case_reviews"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    case_id = Column(String(100), nullable=False, index=True)
+    inspection_id = Column(String(100), nullable=False, index=True)
+    defect_type = Column(String(50), nullable=False)
+    recommended_action = Column(Text, nullable=False)
+    edited_action = Column(Text, nullable=True)
+    decision = Column(String(50), nullable=False)  # APPROVED, EDITED, REJECTED
+    reviewer_note = Column(Text, nullable=True)
+    status = Column(String(50), nullable=False, default="ACTION_APPROVED")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "case_id": self.case_id,
+            "inspection_id": self.inspection_id,
+            "defect_type": self.defect_type,
+            "recommended_action": self.recommended_action,
+            "edited_action": self.edited_action,
+            "decision": self.decision,
+            "reviewer_note": self.reviewer_note,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+

@@ -582,6 +582,105 @@ def get_simulated_what_if_scenarios(defect_type: Optional[str] = None) -> dict:
     }
 
 
+# ===========================================================================
+# Monte Carlo Economic Range Estimation (User-Input Based)
+# Computes LOW / LIKELY / HIGH ranges from user-entered cost parameters.
+# All values are [SIMULATED] — computed from user inputs, not factory ERP.
+# ===========================================================================
+
+def compute_economic_range(
+    config: dict,
+    defect_rate: float,
+    n_samples: int = 500,
+    seed: int = 42,
+) -> dict:
+    """
+    Monte Carlo range estimation for profit, margin, and defect loss.
+
+    Parameters
+    ----------
+    config : dict
+        Must contain: unit_price, material_cost, scrap_cost, rework_cost,
+        units_per_run (optional, defaults to 1000).
+    defect_rate : float
+        Fraction of units expected to be defective (e.g. 0.05 for 5%).
+    n_samples : int
+        Number of Monte Carlo samples (default 500).
+    seed : int
+        RNG seed for deterministic reproducibility (default 42).
+
+    Returns
+    -------
+    dict with {low, likely, high} (p10, p50, p90) for estimated_profit_per_run,
+    profit_margin_pct, total_loss_from_defects, plus label and assumptions.
+    """
+    rng = np.random.default_rng(seed)
+
+    unit_price = float(config.get("unit_price", 50.0))
+    material_cost = float(config.get("material_cost", 30.0))
+    scrap_cost = float(config.get("scrap_cost", 15.0))
+    rework_cost = float(config.get("rework_cost", 20.0))
+    units_per_run = int(config.get("units_per_run", 1000))
+
+    # Vary each parameter by ±10% to ±20% uniformly
+    def _vary(base: float) -> np.ndarray:
+        low_factor = rng.uniform(0.80, 0.90, size=n_samples)
+        high_factor = rng.uniform(1.10, 1.20, size=n_samples)
+        mask = rng.random(n_samples) < 0.5
+        factors = np.where(mask, low_factor, high_factor)
+        return base * factors
+
+    defect_rates = np.clip(_vary(defect_rate), 0.001, 0.999)
+    scrap_costs = np.clip(_vary(scrap_cost), 0.01, None)
+    rework_costs = np.clip(_vary(rework_cost), 0.01, None)
+    unit_prices = np.clip(_vary(unit_price), 0.01, None)
+
+    # Per-sample computations
+    good_units = units_per_run * (1.0 - defect_rates)
+    defective_units = units_per_run * defect_rates
+
+    revenue = good_units * unit_prices
+    production_cost = units_per_run * material_cost  # material is fixed (user-entered)
+    loss_scrap = defective_units * 0.5 * scrap_costs        # assume 50% scrapped
+    loss_rework = defective_units * 0.5 * rework_costs      # assume 50% reworked
+    total_loss = loss_scrap + loss_rework
+
+    profit = revenue - production_cost - total_loss
+    margin_pct = np.where(revenue > 0, (profit / revenue) * 100.0, 0.0)
+
+    def _percentiles(arr: np.ndarray) -> dict:
+        p10, p50, p90 = float(np.percentile(arr, 10)), float(np.percentile(arr, 50)), float(np.percentile(arr, 90))
+        # Guarantee ordering
+        low = min(p10, p50, p90)
+        high = max(p10, p50, p90)
+        likely = float(np.median([p10, p50, p90]))
+        return {
+            "low": round(low, 2),
+            "likely": round(likely, 2),
+            "high": round(high, 2),
+        }
+
+    return {
+        "label": "SIMULATED RANGE",
+        "guardrail_status": "computed from your inputs, simulated",
+        "n_samples": n_samples,
+        "seed": seed,
+        "assumptions": {
+            "unit_price": unit_price,
+            "material_cost": material_cost,
+            "scrap_cost": scrap_cost,
+            "rework_cost": rework_cost,
+            "defect_rate": defect_rate,
+            "units_per_run": units_per_run,
+            "variation_range": "±10% to ±20% uniform perturbation",
+            "scrap_rework_split": "50% scrapped / 50% reworked (assumption)",
+        },
+        "estimated_profit_per_run": _percentiles(profit),
+        "profit_margin_pct": _percentiles(margin_pct),
+        "total_loss_from_defects": _percentiles(total_loss),
+    }
+
+
 # Backwards compatibility aliases
 calculate_unit_economic_impact = get_simulated_economic_impact
 calculate_economic_what_if = get_simulated_what_if_scenarios

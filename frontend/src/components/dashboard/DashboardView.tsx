@@ -39,6 +39,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setRecentAnalyses(getRecentInspections(6));
   }, []);
 
+  // Batch drift detection state
+  const [driftData, setDriftData] = useState<{
+    windows: Array<{ window: number; overall_status: string; columns: Record<string, { psi: number | null; status: string }> }>;
+    flagged_batches: Array<{ window: number; status: string }>;
+    advisory: string[];
+    cusum: { flagged_window: number | null; metric: string };
+    model: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/v1/drift?model=1')
+      .then((res) => {
+        if (!res.ok) throw new Error('Drift API unavailable');
+        return res.json();
+      })
+      .then((data) => setDriftData(data))
+      .catch(() => {
+        // Fallback: generate mock drift data for offline mode
+        const mockWindows = Array.from({ length: 10 }, (_, i) => ({
+          window: i,
+          overall_status: i === 0 ? 'BASELINE' : i === 7 ? 'DRIFT' : i === 5 ? 'WATCH' : 'STABLE',
+          columns: {
+            'Parts per hour': { psi: i === 0 ? null : i === 7 ? 0.31 : i === 5 ? 0.15 : 0.02 + Math.random() * 0.05, status: i === 0 ? 'BASELINE' : i === 7 ? 'DRIFT' : i === 5 ? 'WATCH' : 'STABLE' },
+          },
+        }));
+        setDriftData({
+          windows: mockWindows,
+          flagged_batches: [{ window: 5, status: 'WATCH' }, { window: 7, status: 'DRIFT' }],
+          advisory: ['Batch 7 shows drift in Parts per hour (KS p<0.01, PSI 0.31) - review process settings [HYPOTHESIS]'],
+          cusum: { flagged_window: null, metric: 'Parts per hour' },
+          model: 'Model_1',
+        });
+      });
+  }, []);
+
   // Compute dynamic greeting based on local time
   const getGreeting = (): string => {
     const hour = new Date().getHours();
@@ -393,6 +428,98 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
         </div>
+      )}
+
+      {/* Batch Drift Monitoring Card */}
+      {driftData && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">
+              BATCH DRIFT MONITORING
+            </h3>
+            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+              [SIMULATED]
+            </span>
+            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+              [HYPOTHESIS ONLY]
+            </span>
+          </div>
+
+          <div className="rounded-3xl p-6 bg-slate-950/80 border border-white/10 space-y-4">
+            {/* PSI Bar Chart */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-300 font-bold">PSI per Window ({driftData.model})</span>
+                <div className="flex items-center gap-3 text-[9px] font-mono">
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-cyan-500 inline-block" /> STABLE</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-400 inline-block" /> WATCH</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-rose-500 inline-block" /> DRIFT</span>
+                </div>
+              </div>
+
+              <div className="flex items-end gap-1.5" style={{ height: '100px' }}>
+                {driftData.windows.map((w) => {
+                  // Get max PSI across all columns for this window
+                  const psiValues = Object.values(w.columns)
+                    .map((c) => c.psi)
+                    .filter((v): v is number => v !== null);
+                  const maxPsi = psiValues.length > 0 ? Math.max(...psiValues) : 0;
+                  const barHeight = Math.max(4, Math.min(maxPsi * 250, 96));
+                  const barColor =
+                    w.overall_status === 'DRIFT'
+                      ? 'bg-rose-500'
+                      : w.overall_status === 'WATCH'
+                      ? 'bg-amber-400'
+                      : w.overall_status === 'BASELINE'
+                      ? 'bg-slate-600'
+                      : 'bg-cyan-500';
+
+                  return (
+                    <div key={w.window} className="flex-1 flex flex-col items-center gap-0.5">
+                      <span className="text-[8px] font-mono text-slate-500">
+                        {maxPsi > 0 ? maxPsi.toFixed(2) : ''}
+                      </span>
+                      <div
+                        className={`w-full rounded-t ${barColor} transition-all duration-300`}
+                        style={{ height: `${barHeight}px` }}
+                        title={`Window ${w.window}: ${w.overall_status} (PSI: ${maxPsi.toFixed(3)})`}
+                      />
+                      <span className="text-[8px] font-mono text-slate-500">B{w.window}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Flagged Batches */}
+            {driftData.flagged_batches.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Flagged:</span>
+                {driftData.flagged_batches.map((fb) => (
+                  <span
+                    key={fb.window}
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                      fb.status === 'DRIFT'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    }`}
+                  >
+                    Batch {fb.window} — {fb.status}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Advisory */}
+            <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/20 text-[11px] font-mono text-slate-300 space-y-1">
+              {driftData.advisory.map((msg, idx) => (
+                <p key={idx}>
+                  <span className="text-amber-400 font-bold">⚠</span> {msg}
+                </p>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
       {/* 4. Quick Actions */}

@@ -179,7 +179,7 @@ class DefectInferenceEngine:
             probs = F.softmax(logits, dim=1).cpu().numpy()[0]
 
         pred_idx = int(np.argmax(probs))
-        pred_class = CLASS_NAMES[pred_idx]
+        top1_class_raw = CLASS_NAMES[pred_idx]
         confidence = float(probs[pred_idx])
 
         # Step 6: Probabilities Breakdown for all 5 classes
@@ -188,10 +188,28 @@ class DefectInferenceEngine:
             for i, c_name in enumerate(CLASS_NAMES)
         }
 
-        # Step 7: Low Confidence Check
-        is_low_confidence = confidence < threshold
+        # Step 7: Margin and Softmax Entropy calculation
+        sorted_probs = np.sort(probs)
+        margin = float(sorted_probs[-1] - sorted_probs[-2])
+        # Normalized Shannon entropy: H / ln(K)
+        k_classes = len(CLASS_NAMES)
+        entropy = float(-np.sum(probs * np.log(probs + 1e-12)))
+        normalized_entropy = float(entropy / np.log(k_classes))
+        normalized_entropy = max(0.0, min(1.0, normalized_entropy))
 
-        # Step 8: Grad-CAM Attention Heatmap
+        # Step 8: Uncertainty & Novel Defect Detection
+        is_uncertain = (confidence < threshold) or (margin < 0.15) or (normalized_entropy > 0.6)
+
+        if is_uncertain:
+            pred_class = "Uncertain / Novel"
+            is_low_confidence = True
+            report_text = "needs human review, possible novel defect"
+        else:
+            pred_class = top1_class_raw
+            is_low_confidence = False
+            report_text = f"Model classified specimen as {pred_class} with confidence {confidence * 100:.1f}%."
+
+        # Step 9: Grad-CAM Attention Heatmap (using raw top-1 class index for feature attribution)
         gradcam_data = None
         if include_gradcam and self.gradcam is not None:
             try:
@@ -217,14 +235,19 @@ class DefectInferenceEngine:
         )
         model_ver = "v1.0.0-full-data" if is_full_data else "v1.0.0-evaluated"
 
-        # Step 9: Assembly of final production payload
+        # Step 10: Assembly of final production payload
         return {
             "prediction": pred_class,
+            "top1_class_raw": top1_class_raw,
             "confidence": round(confidence, 4),
+            "margin": round(margin, 4),
+            "normalized_entropy": round(normalized_entropy, 4),
+            "entropy": round(entropy, 4),
             "probabilities": all_probabilities,
             "is_low_confidence": is_low_confidence,
             "confidence_threshold": threshold,
             "is_defective": pred_class != "Normal",
+            "report": report_text,
             "quality": quality_res,
             "gradcam": gradcam_data,
             "model": model_title,

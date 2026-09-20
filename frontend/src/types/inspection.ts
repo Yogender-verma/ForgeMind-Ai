@@ -4,7 +4,7 @@
  * [MEASURED], [CALCULATED], [ESTIMATED], [SIMULATED], [HYPOTHESIS]
  */
 
-export type DefectType = 'Crack' | 'Hole' | 'Normal' | 'Rust' | 'Scratch' | 'Scratches';
+export type DefectType = 'Crack' | 'Hole' | 'Normal' | 'Rust' | 'Scratch' | 'Scratches' | 'Uncertain / Novel';
 
 export type SeverityLevel = 'Low' | 'Medium' | 'High' | 'Critical';
 
@@ -55,6 +55,10 @@ export interface InspectionRecord {
   timestamp: string; // ISO string
   formattedDate: string;
   prediction: DefectType;
+  top1ClassRaw?: string;
+  margin?: number;
+  normalizedEntropy?: number;
+  report?: string;
   confidence: number; // 0 to 100
   status: 'Defective' | 'Normal' | 'Uncertain';
   severity: SeverityInfo;
@@ -274,7 +278,8 @@ export type CaseWorkflowStatus =
   | 'RESOLVED'
   | 'VERIFICATION_PENDING'
   | 'VERIFIED'
-  | 'DEFECT_RECURRED';
+  | 'DEFECT_RECURRED'
+  | 'REJECTED';
 
 export interface EvidenceWhyRelevantItem {
   label: string;
@@ -337,6 +342,8 @@ export interface CaseStatusState {
   confirmed_by_user: boolean;
   verification_status: string;
   notes?: string;
+  decision?: string;
+  updated_at?: string;
 }
 
 export interface CurePreventionSearchResult {

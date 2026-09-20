@@ -18,6 +18,7 @@ Strict Epistemic Principles:
 
 import copy
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 log = logging.getLogger("forgemind.cure_prevention")
@@ -32,7 +33,9 @@ VALID_WORKFLOW_STATES = [
     "VERIFICATION_PENDING",
     "VERIFIED",
     "DEFECT_RECURRED",
+    "REJECTED",
 ]
+
 
 # Demo historical cases seeded for each visual defect class
 # All demo historical records are strictly labeled [SIMULATED]
@@ -285,22 +288,228 @@ def _get_or_create_case_status(inspection_id: str) -> Dict[str, Any]:
     return _CASE_REGISTRY[inspection_id]
 
 
+def save_defect_case_review(
+    case_id: str,
+    inspection_id: str,
+    defect_type: str,
+    recommended_action: str,
+    edited_action: Optional[str],
+    decision: str,  # APPROVED, EDITED, REJECTED
+    reviewer_note: Optional[str],
+    status: str,
+) -> Optional[Dict[str, Any]]:
+    """Persists a case review decision to the PostgreSQL database with safe fallback."""
+    try:
+        from backend.database import is_database_connected, _session_local
+        from backend.models import DefectCaseReview
+
+        if is_database_connected() and _session_local:
+            db = _session_local()
+            try:
+                review = DefectCaseReview(
+                    case_id=case_id,
+                    inspection_id=inspection_id,
+                    defect_type=defect_type or "Unknown",
+                    recommended_action=recommended_action or "Standard SOP",
+                    edited_action=edited_action,
+                    decision=decision,
+                    reviewer_note=reviewer_note,
+                    status=status,
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
+                )
+                db.add(review)
+                db.commit()
+                db.refresh(review)
+                return review.to_dict()
+            except Exception as e:
+                db.rollback()
+                log.warning("Database write failed for DefectCaseReview: %s (falling back to memory)", e)
+            finally:
+                db.close()
+    except Exception as err:
+        log.warning("Database unavailable for case persistence: %s (falling back to in-memory)", err)
+    return None
+
+
+def update_case_verification_in_db(
+    inspection_id: str,
+    status: str,
+    notes: Optional[str] = None,
+    defect_type: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Updates or inserts verification status in DefectCaseReview table."""
+    try:
+        from backend.database import is_database_connected, _session_local
+        from backend.models import DefectCaseReview
+
+        if is_database_connected() and _session_local:
+            db = _session_local()
+            try:
+                record = (
+                    db.query(DefectCaseReview)
+                    .filter(DefectCaseReview.inspection_id == inspection_id)
+                    .order_by(DefectCaseReview.created_at.desc())
+                    .first()
+                )
+                if record:
+                    record.status = status
+                    if notes:
+                        record.reviewer_note = (
+                            f"{record.reviewer_note} | {notes}" if record.reviewer_note else notes
+                        )
+                    record.updated_at = datetime.now(timezone.utc)
+                    db.commit()
+                    db.refresh(record)
+                    return record.to_dict()
+                else:
+                    new_rec = DefectCaseReview(
+                        case_id=f"CASE-HIST-{inspection_id}",
+                        inspection_id=inspection_id,
+                        defect_type=defect_type or "Unknown",
+                        recommended_action=notes or "Verified SOP",
+                        decision="APPROVED",
+                        reviewer_note=notes,
+                        status=status,
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                    db.add(new_rec)
+                    db.commit()
+                    db.refresh(new_rec)
+                    return new_rec.to_dict()
+            except Exception as e:
+                db.rollback()
+                log.warning("Database update failed for DefectCaseReview: %s", e)
+            finally:
+                db.close()
+    except Exception as err:
+        log.warning("Database unavailable for DefectCaseReview update: %s", err)
+    return None
+
+
+def rebuild_registry_from_db() -> bool:
+    """
+    Rebuilds _CASE_REGISTRY and _HISTORICAL_LIBRARY from DefectCaseReview table.
+    Gracefully falls back to in-memory defaults if database is offline or unavailable.
+    """
+    global _CASE_REGISTRY, _HISTORICAL_LIBRARY
+    try:
+        from backend.database import is_database_connected, _session_local
+        from backend.models import DefectCaseReview
+
+        if not is_database_connected() or not _session_local:
+            log.info("Database not connected; retaining in-memory registry baseline.")
+            return False
+
+        db = _session_local()
+        try:
+            reviews = db.query(DefectCaseReview).order_by(DefectCaseReview.created_at.asc()).all()
+            if not reviews:
+                log.info("DefectCaseReview table is empty; retained baseline demo library.")
+                return True
+
+            for rev in reviews:
+                effective_action = (
+                    rev.edited_action if (rev.decision == "EDITED" and rev.edited_action) else rev.recommended_action
+                )
+                _CASE_REGISTRY[rev.inspection_id] = {
+                    "inspection_id": rev.inspection_id,
+                    "case_id": rev.case_id,
+                    "status": rev.status,
+                    "status_tag": "[USER CONFIRMED]",
+                    "decision": rev.decision,
+                    "applied_action": effective_action,
+                    "confirmed_by_user": rev.decision in ["APPROVED", "EDITED"],
+                    "verification_status": (
+                        "VERIFIED"
+                        if rev.status == "VERIFIED"
+                        else ("DEFECT_RECURRED" if rev.status == "DEFECT_RECURRED" else "UNVERIFIED")
+                    ),
+                    "notes": rev.reviewer_note or "",
+                    "linked_previous_case_id": rev.case_id,
+                    "updated_at": rev.updated_at.isoformat() if rev.updated_at else None,
+                    "history": [
+                        {"status": "NEW", "timestamp": "Inspection ingested", "tag": "[MEASURED]"},
+                        {
+                            "status": rev.status,
+                            "action": effective_action,
+                            "tag": "[USER CONFIRMED]",
+                            "note": rev.reviewer_note or f"Human decision: {rev.decision}",
+                        },
+                    ],
+                }
+
+                if rev.defect_type and rev.defect_type != "Normal":
+                    clean_d = rev.defect_type.capitalize()
+                    _HISTORICAL_LIBRARY[clean_d] = {
+                        "case_id": f"CASE-HIST-{rev.inspection_id}",
+                        "defect": clean_d,
+                        "status": "Resolved",
+                        "status_tag": "[USER CONFIRMED]",
+                        "similarity_pct": 96.0,
+                        "similarity_tag": "[SIMILARITY]",
+                        "previous_image_ref": "",
+                        "previous_investigation": f"Human-confirmed resolution for {clean_d}",
+                        "previous_possible_cause": rev.reviewer_note or f"Historical factor associated with {clean_d}",
+                        "cause_tag": "[HYPOTHESIS]",
+                        "previous_recommended_action": effective_action,
+                        "action_tag": "[ADVISORY]",
+                        "previous_human_decision": f"Action {rev.decision.lower()} by engineer",
+                        "decision_tag": "[USER CONFIRMED]",
+                        "previous_outcome": f"Case marked {rev.status.lower()}",
+                        "outcome_tag": "[USER CONFIRMED]",
+                        "evidence_why_relevant": [
+                            {"label": "Same defect class", "tag": "[MEASURED]", "detail": f"Case {rev.inspection_id}"},
+                            {"label": "Visual similarity", "tag": "[SIMILARITY]", "detail": "Rebuilt from production review library"},
+                            {"label": "Previous corrective action available", "tag": "[HISTORICAL EVIDENCE]", "detail": "Engineer confirmed SOP"},
+                        ],
+                        "cure_action": {
+                            "previous_action_summary": effective_action,
+                            "evidence_tag": "[HISTORICAL EVIDENCE]",
+                            "simulated_tag": "[USER CONFIRMED]",
+                            "recommended_review": "Consider reviewing this previously confirmed procedure for the current defect.",
+                            "advisory_tag": "[ADVISORY]",
+                            "disclaimer": "Does not guarantee physical resolution. On-site human verification is required.",
+                        },
+                        "prevention": {
+                            "guidance": "Use previous resolved cases as guidance for recurring defects.",
+                            "procedure": "If the current defect is confirmed to match the previous case, review the same inspection and corrective procedure.",
+                            "advisory_tag": "[ADVISORY]",
+                            "effectiveness_notice": "Prevention procedure confirmed by engineering review.",
+                        },
+                        "similarity_disclaimer": "Similarity indicates resemblance to a previous case; it does not confirm the same underlying cause.",
+                    }
+            log.info("Rebuilt case registry (%d cases) and historical library from DefectCaseReview table.", len(reviews))
+            return True
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning("Could not rebuild registry from database: %s (using in-memory fallback)", e)
+        return False
+
+
 def apply_previous_action(
     inspection_id: str,
     case_id: str,
     action_text: str,
     user_note: Optional[str] = None,
+    defect_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Applies the previous case's corrective procedure to the current inspection.
     Enforces that this is a decision-support recording, NOT an automatic physical repair.
+    Persists decision='APPROVED' to PostgreSQL DefectCaseReview table.
     """
     case_record = _get_or_create_case_status(inspection_id)
+    now_iso = datetime.now(timezone.utc).isoformat()
     case_record["status"] = "ACTION_APPROVED"
     case_record["status_tag"] = "[USER CONFIRMED]"
+    case_record["decision"] = "APPROVED"
     case_record["applied_action"] = action_text
     case_record["confirmed_by_user"] = True
     case_record["linked_previous_case_id"] = case_id
+    case_record["decision_timestamp"] = now_iso
     if user_note:
         case_record["notes"] = user_note
 
@@ -308,17 +517,153 @@ def apply_previous_action(
         "status": "ACTION_APPROVED",
         "action": action_text,
         "tag": "[USER CONFIRMED]",
-        "note": "Human operator approved previous action as guidance",
+        "note": user_note or "Human operator approved previous action as guidance",
+        "timestamp": now_iso,
     })
+
+    # Save to database
+    save_defect_case_review(
+        case_id=case_id,
+        inspection_id=inspection_id,
+        defect_type=defect_type or case_record.get("defect") or "Unknown",
+        recommended_action=action_text,
+        edited_action=None,
+        decision="APPROVED",
+        reviewer_note=user_note,
+        status="ACTION_APPROVED",
+    )
 
     return {
         "status": "ACTION_APPROVED",
+        "decision": "APPROVED",
         "status_tag": "[USER CONFIRMED]",
         "message": "Corrective action marked for this case.",
         "case_id": inspection_id,
         "linked_previous_case_id": case_id,
         "applied_action": action_text,
+        "decision_timestamp": now_iso,
         "disclaimer": "Physical corrective action must be completed and verified by the responsible human/team.",
+        "case_state": case_record,
+    }
+
+
+def edit_case_action(
+    inspection_id: str,
+    case_id: str,
+    edited_action: str,
+    reviewer_note: Optional[str] = None,
+    defect_type: Optional[str] = None,
+    recommended_action: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Allows a quality engineer to customize/edit the recommended corrective action.
+    Persists decision='EDITED' to PostgreSQL DefectCaseReview table.
+    """
+    if not edited_action or not edited_action.strip():
+        raise ValueError("Edited action text cannot be empty.")
+
+    case_record = _get_or_create_case_status(inspection_id)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    case_record["status"] = "ACTION_APPROVED"
+    case_record["status_tag"] = "[USER CONFIRMED]"
+    case_record["decision"] = "EDITED"
+    case_record["applied_action"] = edited_action
+    case_record["edited_action"] = edited_action
+    case_record["confirmed_by_user"] = True
+    case_record["linked_previous_case_id"] = case_id
+    case_record["decision_timestamp"] = now_iso
+    if reviewer_note:
+        case_record["notes"] = reviewer_note
+
+    case_record["history"].append({
+        "status": "ACTION_APPROVED",
+        "action": edited_action,
+        "tag": "[USER CONFIRMED]",
+        "note": reviewer_note or "Human operator edited and approved action",
+        "timestamp": now_iso,
+    })
+
+    # Save to database
+    save_defect_case_review(
+        case_id=case_id,
+        inspection_id=inspection_id,
+        defect_type=defect_type or case_record.get("defect") or "Unknown",
+        recommended_action=recommended_action or edited_action,
+        edited_action=edited_action,
+        decision="EDITED",
+        reviewer_note=reviewer_note,
+        status="ACTION_APPROVED",
+    )
+
+    return {
+        "status": "ACTION_APPROVED",
+        "decision": "EDITED",
+        "status_tag": "[USER CONFIRMED]",
+        "message": "Edited corrective action saved and applied.",
+        "case_id": inspection_id,
+        "linked_previous_case_id": case_id,
+        "applied_action": edited_action,
+        "edited_action": edited_action,
+        "decision_timestamp": now_iso,
+        "disclaimer": "Physical corrective action must be completed and verified by the responsible human/team.",
+        "case_state": case_record,
+    }
+
+
+def reject_case_action(
+    inspection_id: str,
+    case_id: str,
+    reason: str,
+    defect_type: Optional[str] = None,
+    recommended_action: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Rejects the recommended action for an inspection.
+    Requires a reason for the rejection.
+    Persists decision='REJECTED' to PostgreSQL DefectCaseReview table.
+    """
+    if not reason or not reason.strip():
+        raise ValueError("A reason is required to reject the recommended action.")
+
+    case_record = _get_or_create_case_status(inspection_id)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    case_record["status"] = "REJECTED"
+    case_record["status_tag"] = "[USER CONFIRMED]"
+    case_record["decision"] = "REJECTED"
+    case_record["confirmed_by_user"] = False
+    case_record["rejection_reason"] = reason
+    case_record["notes"] = reason
+    case_record["linked_previous_case_id"] = case_id
+    case_record["decision_timestamp"] = now_iso
+
+    case_record["history"].append({
+        "status": "REJECTED",
+        "tag": "[USER CONFIRMED]",
+        "note": f"Action rejected: {reason}",
+        "timestamp": now_iso,
+    })
+
+    # Save to database
+    save_defect_case_review(
+        case_id=case_id,
+        inspection_id=inspection_id,
+        defect_type=defect_type or case_record.get("defect") or "Unknown",
+        recommended_action=recommended_action or "N/A",
+        edited_action=None,
+        decision="REJECTED",
+        reviewer_note=reason,
+        status="REJECTED",
+    )
+
+    return {
+        "status": "REJECTED",
+        "decision": "REJECTED",
+        "status_tag": "[USER CONFIRMED]",
+        "message": "Action recommendation rejected by reviewer.",
+        "case_id": inspection_id,
+        "linked_previous_case_id": case_id,
+        "rejection_reason": reason,
+        "decision_timestamp": now_iso,
         "case_state": case_record,
     }
 
@@ -361,6 +706,7 @@ def verify_case_prevention(
     """
     Records human verification of prevention effectiveness.
     If verified, adds case to historical defect library for future similarity learning.
+    Writes verification outcome to DefectCaseReview table.
     """
     case_record = _get_or_create_case_status(inspection_id)
 
@@ -424,6 +770,14 @@ def verify_case_prevention(
         "note": verification_notes or message,
     })
 
+    # Update DB persistence
+    update_case_verification_in_db(
+        inspection_id=inspection_id,
+        status=new_status,
+        notes=verification_notes or message,
+        defect_type=defect_type,
+    )
+
     return {
         "status": new_status,
         "status_tag": "[USER CONFIRMED]",
@@ -440,3 +794,11 @@ def reset_case_registry():
     global _CASE_REGISTRY, _HISTORICAL_LIBRARY
     _CASE_REGISTRY = {}
     _HISTORICAL_LIBRARY = copy.deepcopy(DEMO_HISTORICAL_CASES)
+
+
+# Attempt initial database rebuild on startup if database is available
+try:
+    rebuild_registry_from_db()
+except Exception as _e:
+    log.warning("Cure & Prevention startup DB rebuild notice: %s", _e)
+

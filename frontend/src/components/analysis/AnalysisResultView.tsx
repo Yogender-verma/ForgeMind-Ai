@@ -48,6 +48,21 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
   const [showCaseReviewModal, setShowCaseReviewModal] = useState(false);
   const [showNewInvestigationModal, setShowNewInvestigationModal] = useState(false);
 
+  // Persistence Review State (Approve, Edit, Reject with decision & timestamp)
+  const [caseDecisionInfo, setCaseDecisionInfo] = useState<{
+    decision: 'APPROVED' | 'EDITED' | 'REJECTED';
+    timestamp: string;
+    action?: string;
+    note?: string;
+  } | null>(null);
+  const [showEditActionModal, setShowEditActionModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [editActionText, setEditActionText] = useState('');
+  const [editActionNote, setEditActionNote] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  const [isSavingDecision, setIsSavingDecision] = useState(false);
+
 
 
   // Fetch Cure & Prevention Historical Case Search
@@ -73,6 +88,16 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
           setCurePreventionData(data);
           if (data.active_case_status?.status) {
             setCureActionStatus(data.active_case_status.status);
+          }
+          if (data.active_case_status?.decision) {
+            setCaseDecisionInfo({
+              decision: data.active_case_status.decision as 'APPROVED' | 'EDITED' | 'REJECTED',
+              timestamp: data.active_case_status.updated_at
+                ? new Date(data.active_case_status.updated_at).toLocaleString()
+                : 'Previously Recorded',
+              action: data.active_case_status.applied_action || undefined,
+              note: data.active_case_status.notes,
+            });
           }
           setIsLoadingCurePrevention(false);
         }
@@ -237,29 +262,180 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
     const actionText = curePreventionData.similar_case.cure_action.previous_action_summary;
     const caseId = curePreventionData.similar_case.case_id;
 
+    const nowStr = new Date().toLocaleString();
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/v1/cure-prevention/apply-action', {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/cases/${encodeURIComponent(caseId)}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inspection_id: record.id,
           case_id: caseId,
           action_text: actionText,
+          defect_type: record.prediction,
+          user_note: 'Operator approved recommendation as guidance',
         }),
       });
       if (res.ok) {
         const data = await res.json();
         setCureActionStatus(data.status as CaseWorkflowStatus);
+        setCaseDecisionInfo({
+          decision: 'APPROVED',
+          timestamp: data.decision_timestamp ? new Date(data.decision_timestamp).toLocaleString() : nowStr,
+          action: actionText,
+        });
       } else {
         setCureActionStatus('ACTION_APPROVED');
+        setCaseDecisionInfo({
+          decision: 'APPROVED',
+          timestamp: nowStr,
+          action: actionText,
+        });
       }
     } catch (_) {
       setCureActionStatus('ACTION_APPROVED');
+      setCaseDecisionInfo({
+        decision: 'APPROVED',
+        timestamp: nowStr,
+        action: actionText,
+      });
     }
 
     setActionConfirmationNotice('Corrective action marked for this case.');
     setIsApplyingAction(false);
     setShowApplyConfirmModal(false);
+  };
+
+  const handleOpenEditModal = () => {
+    const defaultAction =
+      curePreventionData?.similar_case?.cure_action?.previous_action_summary ||
+      curePreventionData?.similar_case?.previous_recommended_action ||
+      '';
+    setEditActionText(defaultAction);
+    setEditActionNote('');
+    setShowEditActionModal(true);
+    setShowRejectModal(false);
+    setShowApplyConfirmModal(false);
+  };
+
+  const handleOpenRejectModal = () => {
+    setRejectReason('');
+    setRejectError(null);
+    setShowRejectModal(true);
+    setShowEditActionModal(false);
+    setShowApplyConfirmModal(false);
+  };
+
+  const handleConfirmEditAction = async () => {
+    if (!record?.id || !editActionText.trim()) return;
+    setIsSavingDecision(true);
+    const caseId = curePreventionData?.similar_case?.case_id || `CASE-${record.id}`;
+    const origAction =
+      curePreventionData?.similar_case?.cure_action?.previous_action_summary ||
+      curePreventionData?.similar_case?.previous_recommended_action ||
+      '';
+
+    const nowStr = new Date().toLocaleString();
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/cases/${encodeURIComponent(caseId)}/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inspection_id: record.id,
+          edited_action: editActionText.trim(),
+          reviewer_note: editActionNote.trim() || undefined,
+          defect_type: record.prediction,
+          recommended_action: origAction,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCureActionStatus((data.status as CaseWorkflowStatus) || 'ACTION_APPROVED');
+        setCaseDecisionInfo({
+          decision: 'EDITED',
+          timestamp: data.decision_timestamp ? new Date(data.decision_timestamp).toLocaleString() : nowStr,
+          action: editActionText.trim(),
+          note: editActionNote.trim() || undefined,
+        });
+      } else {
+        setCureActionStatus('ACTION_APPROVED');
+        setCaseDecisionInfo({
+          decision: 'EDITED',
+          timestamp: nowStr,
+          action: editActionText.trim(),
+          note: editActionNote.trim() || undefined,
+        });
+      }
+    } catch (_) {
+      setCureActionStatus('ACTION_APPROVED');
+      setCaseDecisionInfo({
+        decision: 'EDITED',
+        timestamp: nowStr,
+        action: editActionText.trim(),
+        note: editActionNote.trim() || undefined,
+      });
+    }
+
+    setActionConfirmationNotice('Edited corrective action saved and applied.');
+    setIsSavingDecision(false);
+    setShowEditActionModal(false);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!record?.id) return;
+    if (!rejectReason.trim()) {
+      setRejectError('A reason is required to reject the recommendation.');
+      return;
+    }
+
+    setIsSavingDecision(true);
+    const caseId = curePreventionData?.similar_case?.case_id || `CASE-${record.id}`;
+    const origAction =
+      curePreventionData?.similar_case?.cure_action?.previous_action_summary ||
+      curePreventionData?.similar_case?.previous_recommended_action ||
+      '';
+
+    const nowStr = new Date().toLocaleString();
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/cases/${encodeURIComponent(caseId)}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inspection_id: record.id,
+          reason: rejectReason.trim(),
+          defect_type: record.prediction,
+          recommended_action: origAction,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCureActionStatus((data.status as CaseWorkflowStatus) || 'REJECTED');
+        setCaseDecisionInfo({
+          decision: 'REJECTED',
+          timestamp: data.decision_timestamp ? new Date(data.decision_timestamp).toLocaleString() : nowStr,
+          note: rejectReason.trim(),
+        });
+      } else {
+        setCureActionStatus('REJECTED');
+        setCaseDecisionInfo({
+          decision: 'REJECTED',
+          timestamp: nowStr,
+          note: rejectReason.trim(),
+        });
+      }
+    } catch (_) {
+      setCureActionStatus('REJECTED');
+      setCaseDecisionInfo({
+        decision: 'REJECTED',
+        timestamp: nowStr,
+        note: rejectReason.trim(),
+      });
+    }
+
+    setActionConfirmationNotice('Recommendation rejected by reviewer.');
+    setIsSavingDecision(false);
+    setShowRejectModal(false);
   };
 
   const handleUpdateWorkflowStatus = async (newStatus: CaseWorkflowStatus) => {
@@ -407,6 +583,93 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
       future_integration_note:
         'Future Factory Integration: Product + ERP/MES + Quality Data → Verified Economic Impact',
     });
+    setCustomEconomicRanges(null);
+  };
+
+  // Custom Economic Inputs (User-Entered Cost Modeling)
+  const [customUnitPrice, setCustomUnitPrice] = useState(50.0);
+  const [customMaterialCost, setCustomMaterialCost] = useState(30.0);
+  const [customScrapCost, setCustomScrapCost] = useState(15.0);
+  const [customReworkCost, setCustomReworkCost] = useState(20.0);
+  const [customDefectRate, setCustomDefectRate] = useState(0.08);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [customEconomicRanges, setCustomEconomicRanges] = useState<{
+    point_estimate: { estimated_profit_per_run: number; profit_margin_pct: number; total_loss_from_defects: number };
+    ranges: {
+      estimated_profit_per_run: { low: number; likely: number; high: number };
+      profit_margin_pct: { low: number; likely: number; high: number };
+      total_loss_from_defects: { low: number; likely: number; high: number };
+      label: string;
+      guardrail_status: string;
+    };
+  } | null>(null);
+
+  // Preset tier defect rates
+  const applyPresetDefectRate = (tier: 'LOW' | 'MEDIUM' | 'HIGH') => {
+    const rateMap = { LOW: 0.05, MEDIUM: 0.10, HIGH: 0.20 };
+    setCustomDefectRate(rateMap[tier]);
+  };
+
+  const handleRecalculateCustomEconomic = async () => {
+    setIsRecalculating(true);
+    const payload = {
+      unit_price: customUnitPrice,
+      material_cost: customMaterialCost,
+      scrap_cost: customScrapCost,
+      rework_cost: customReworkCost,
+      defect_rate: customDefectRate,
+      units_per_run: 1000,
+    };
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/v1/economic/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomEconomicRanges(data);
+        setIsRecalculating(false);
+        return;
+      }
+    } catch (_) {}
+
+    // Local deterministic fallback (simplified range)
+    const units = 1000;
+    const dr = Math.max(0.001, Math.min(customDefectRate, 0.999));
+    const goodUnits = units * (1 - dr);
+    const defectiveUnits = units * dr;
+    const revenue = goodUnits * customUnitPrice;
+    const prodCost = units * customMaterialCost;
+    const lossScrap = defectiveUnits * 0.5 * customScrapCost;
+    const lossRework = defectiveUnits * 0.5 * customReworkCost;
+    const totalLoss = lossScrap + lossRework;
+    const profit = revenue - prodCost - totalLoss;
+    const marginPct = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+    // Approximate ±15% range
+    const mkRange = (v: number) => ({
+      low: Math.round((v * 0.85) * 100) / 100,
+      likely: Math.round(v * 100) / 100,
+      high: Math.round((v * 1.15) * 100) / 100,
+    });
+
+    setCustomEconomicRanges({
+      point_estimate: {
+        estimated_profit_per_run: Math.round(profit * 100) / 100,
+        profit_margin_pct: Math.round(marginPct * 100) / 100,
+        total_loss_from_defects: Math.round(totalLoss * 100) / 100,
+      },
+      ranges: {
+        estimated_profit_per_run: mkRange(profit),
+        profit_margin_pct: mkRange(marginPct),
+        total_loss_from_defects: { low: Math.round(totalLoss * 0.85 * 100) / 100, likely: Math.round(totalLoss * 100) / 100, high: Math.round(totalLoss * 1.15 * 100) / 100 },
+        label: 'SIMULATED RANGE',
+        guardrail_status: 'computed from your inputs, simulated',
+      },
+    });
+    setIsRecalculating(false);
   };
 
   // Reset to initial unassessed state and fetch scenarios on record load
@@ -1299,6 +1562,212 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
               </div>
             </div>
 
+            {/* SECTION 2: CUSTOM COST ANALYSIS — USER-ENTERED INPUTS & MONTE CARLO RANGES */}
+            <div className="p-5 rounded-2xl bg-slate-900/80 border border-purple-500/30 space-y-5 shadow-lg">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <h4 className="text-sm font-bold font-heading text-white tracking-wide">
+                    CUSTOM COST ANALYSIS
+                  </h4>
+                  <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                    [SIMULATED]
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-slate-400">
+                  Enter your production costs to estimate profit/margin ranges
+                </span>
+              </div>
+
+              {/* Editable Cost Inputs Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block">Unit Price (INR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={customUnitPrice}
+                    onChange={(e) => setCustomUnitPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block">Material Cost (INR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={customMaterialCost}
+                    onChange={(e) => setCustomMaterialCost(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block">Scrap Cost (INR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={customScrapCost}
+                    onChange={(e) => setCustomScrapCost(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block">Rework Cost (INR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={customReworkCost}
+                    onChange={(e) => setCustomReworkCost(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Defect Rate Presets + Manual Input */}
+              <div className="flex flex-wrap items-end gap-3 font-mono">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block">Defect Rate</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.001"
+                    max="0.999"
+                    value={customDefectRate}
+                    onChange={(e) => setCustomDefectRate(parseFloat(e.target.value) || 0.08)}
+                    className="w-28 px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                  <span className="text-[9px] text-slate-500 block">e.g. 0.08 = 8%</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400 mr-1">Presets:</span>
+                  {(['LOW', 'MEDIUM', 'HIGH'] as const).map((tier) => {
+                    const pctLabel = { LOW: '5%', MEDIUM: '10%', HIGH: '20%' };
+                    return (
+                      <button
+                        key={tier}
+                        type="button"
+                        onClick={() => applyPresetDefectRate(tier)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition cursor-pointer border ${
+                          customDefectRate === (tier === 'LOW' ? 0.05 : tier === 'MEDIUM' ? 0.10 : 0.20)
+                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/50'
+                            : 'text-slate-400 bg-slate-950 border-white/10 hover:text-white hover:border-white/20'
+                        }`}
+                      >
+                        {tier} ({pctLabel[tier]})
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRecalculateCustomEconomic}
+                  disabled={isRecalculating}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-400 hover:from-purple-400 hover:to-purple-300 text-white font-bold text-xs shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {isRecalculating ? (
+                    <><span className="animate-spin">⟳</span> Calculating...</>
+                  ) : (
+                    <><span>📊</span> Recalculate</>
+                  )}
+                </button>
+              </div>
+
+              {/* Range Results Display */}
+              {customEconomicRanges && (
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <div className="flex items-center gap-2 font-mono">
+                    <span className="text-xs font-bold text-purple-300 uppercase">Profit, Margin & Loss Ranges</span>
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                      [SIMULATED RANGE]
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono">
+                    {/* Estimated Profit */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/20 space-y-2">
+                      <span className="text-[10px] text-emerald-300 uppercase tracking-wider block font-bold">
+                        Est. Profit / Run
+                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-lg font-extrabold text-emerald-400">
+                          {customEconomicRanges.ranges.estimated_profit_per_run.likely.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-slate-400">INR</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-rose-400">{customEconomicRanges.ranges.estimated_profit_per_run.low.toLocaleString()}</span>
+                        <span className="text-slate-500">—</span>
+                        <span className="text-emerald-300 font-bold">{customEconomicRanges.ranges.estimated_profit_per_run.likely.toLocaleString()}</span>
+                        <span className="text-slate-500">—</span>
+                        <span className="text-cyan-400">{customEconomicRanges.ranges.estimated_profit_per_run.high.toLocaleString()}</span>
+                      </div>
+                      <div className="text-[9px] text-slate-500 flex gap-2">
+                        <span>Low (p10)</span><span>Likely (p50)</span><span>High (p90)</span>
+                      </div>
+                    </div>
+
+                    {/* Profit Margin % */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/20 space-y-2">
+                      <span className="text-[10px] text-cyan-300 uppercase tracking-wider block font-bold">
+                        Profit Margin %
+                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-lg font-extrabold text-cyan-400">
+                          {customEconomicRanges.ranges.profit_margin_pct.likely.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-rose-400">{customEconomicRanges.ranges.profit_margin_pct.low.toFixed(1)}%</span>
+                        <span className="text-slate-500">—</span>
+                        <span className="text-cyan-300 font-bold">{customEconomicRanges.ranges.profit_margin_pct.likely.toFixed(1)}%</span>
+                        <span className="text-slate-500">—</span>
+                        <span className="text-emerald-400">{customEconomicRanges.ranges.profit_margin_pct.high.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-[9px] text-slate-500 flex gap-2">
+                        <span>Low (p10)</span><span>Likely (p50)</span><span>High (p90)</span>
+                      </div>
+                    </div>
+
+                    {/* Total Loss from Defects */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-rose-500/20 space-y-2">
+                      <span className="text-[10px] text-rose-300 uppercase tracking-wider block font-bold">
+                        Total Defect Loss
+                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-lg font-extrabold text-rose-400">
+                          {customEconomicRanges.ranges.total_loss_from_defects.likely.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-slate-400">INR</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-emerald-400">{customEconomicRanges.ranges.total_loss_from_defects.low.toLocaleString()}</span>
+                        <span className="text-slate-500">—</span>
+                        <span className="text-rose-300 font-bold">{customEconomicRanges.ranges.total_loss_from_defects.likely.toLocaleString()}</span>
+                        <span className="text-slate-500">—</span>
+                        <span className="text-rose-400">{customEconomicRanges.ranges.total_loss_from_defects.high.toLocaleString()}</span>
+                      </div>
+                      <div className="text-[9px] text-slate-500 flex gap-2">
+                        <span>Low (p10)</span><span>Likely (p50)</span><span>High (p90)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Guardrail Notice */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-purple-500/20 text-[11px] font-mono text-slate-400 flex items-center gap-2">
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                      SIMULATED
+                    </span>
+                    <span>
+                      Computed from your inputs, simulated. Monte Carlo ±10-20% perturbation on defect rate, scrap/rework costs, and unit price. Not actual factory financial data.
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Navigation Callout to Tab 3: Scenario Sensitivity & What-If Simulator */}
             <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/30 via-slate-900/80 to-slate-900/80 border border-amber-500/30 flex flex-wrap items-center justify-between gap-4 font-mono shadow-md">
               <div className="space-y-1">
@@ -1962,6 +2431,56 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
                       </span>
                     </div>
 
+                    {/* Saved Decision Banner with Timestamp */}
+                    {caseDecisionInfo && (
+                      <div
+                        className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn ${
+                          caseDecisionInfo.decision === 'APPROVED'
+                            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                            : caseDecisionInfo.decision === 'EDITED'
+                            ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                            : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider ${
+                                caseDecisionInfo.decision === 'APPROVED'
+                                  ? 'bg-emerald-500 text-slate-950'
+                                  : caseDecisionInfo.decision === 'EDITED'
+                                  ? 'bg-amber-500 text-slate-950'
+                                  : 'bg-rose-500 text-white'
+                              }`}
+                            >
+                              {caseDecisionInfo.decision} [USER CONFIRMED]
+                            </span>
+                            <span className="text-xs font-semibold text-white">
+                              Review Decision Recorded
+                            </span>
+                          </div>
+                          {caseDecisionInfo.action && (
+                            <p className="text-xs text-slate-300">
+                              <strong>Action:</strong> {caseDecisionInfo.action}
+                            </p>
+                          )}
+                          {caseDecisionInfo.note && (
+                            <p className="text-xs text-slate-400">
+                              <strong>Note / Reason:</strong> {caseDecisionInfo.note}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 block uppercase tracking-wider">
+                            Decision Saved At
+                          </span>
+                          <span className="text-xs font-mono font-bold text-white">
+                            {caseDecisionInfo.timestamp}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="button"
@@ -1970,6 +2489,24 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
                       >
                         <span>✓</span>
                         <span>APPLY PREVIOUS ACTION</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenEditModal}
+                        className="px-4 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                      >
+                        <span>✏️</span>
+                        <span>EDIT ACTION</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenRejectModal}
+                        className="px-4 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-[0_0_12px_rgba(244,63,94,0.2)]"
+                      >
+                        <span>✕</span>
+                        <span>REJECT</span>
                       </button>
 
                       <button
@@ -2019,6 +2556,132 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
                           >
                             CANCEL
                           </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Inline Edit Action Modal */}
+                    {showEditActionModal && (
+                      <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-3 animate-fadeIn">
+                        <div className="flex items-start gap-2">
+                          <span className="text-base text-amber-400">✏️</span>
+                          <div>
+                            <h4 className="text-xs text-white font-bold uppercase tracking-wider">
+                              Edit Recommended Corrective Action
+                            </h4>
+                            <p className="text-[11px] text-slate-400">
+                              Customize the SOP procedure and record reviewer notes before saving.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 pl-6">
+                          <div>
+                            <label className="text-[10px] text-amber-300 font-bold uppercase block mb-1">
+                              Recommended Action (Editable):
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={editActionText}
+                              onChange={(e) => setEditActionText(e.target.value)}
+                              className="w-full p-2.5 rounded-lg bg-slate-900 border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+                              placeholder="Enter customized corrective procedure..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-slate-400 font-bold uppercase block mb-1">
+                              Reviewer Note (Optional):
+                            </label>
+                            <input
+                              type="text"
+                              value={editActionNote}
+                              onChange={(e) => setEditActionNote(e.target.value)}
+                              className="w-full p-2 rounded-lg bg-slate-900 border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+                              placeholder="e.g. Modified tool offset per maintenance log audit"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleConfirmEditAction}
+                              disabled={isSavingDecision || !editActionText.trim()}
+                              className="px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs transition cursor-pointer disabled:opacity-50"
+                            >
+                              {isSavingDecision ? 'Saving...' : 'SAVE & APPLY EDITED ACTION'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowEditActionModal(false)}
+                              className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-white/10 text-slate-300 border border-white/10 text-xs transition cursor-pointer"
+                            >
+                              CANCEL
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Inline Reject Modal */}
+                    {showRejectModal && (
+                      <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 space-y-3 animate-fadeIn">
+                        <div className="flex items-start gap-2">
+                          <span className="text-base text-rose-400">✕</span>
+                          <div>
+                            <h4 className="text-xs text-white font-bold uppercase tracking-wider">
+                              Reject Recommended Action
+                            </h4>
+                            <p className="text-[11px] text-slate-400">
+                              Rejection requires an explicit engineering reason for audit and learning loop capture.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 pl-6">
+                          <div>
+                            <label className="text-[10px] text-rose-300 font-bold uppercase block mb-1">
+                              Reason for Rejection (Required):
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={rejectReason}
+                              onChange={(e) => {
+                                setRejectReason(e.target.value);
+                                if (rejectError) setRejectError(null);
+                              }}
+                              className={`w-full p-2.5 rounded-lg bg-slate-900 border text-xs text-white placeholder-slate-500 focus:outline-none font-mono ${
+                                rejectError ? 'border-rose-500' : 'border-white/15 focus:border-rose-400'
+                              }`}
+                              placeholder="State reason (e.g. Fixture guide rails were inspected and confirmed within spec; crack appears thermal shock)..."
+                            />
+                            {rejectError && (
+                              <p className="text-[10px] text-rose-400 mt-1 font-bold">
+                                ⚠️ {rejectError}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleConfirmReject}
+                              disabled={isSavingDecision}
+                              className="px-4 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs transition cursor-pointer disabled:opacity-50"
+                            >
+                              {isSavingDecision ? 'Saving...' : 'CONFIRM REJECTION'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowRejectModal(false);
+                                setRejectError(null);
+                              }}
+                              className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-white/10 text-slate-300 border border-white/10 text-xs transition cursor-pointer"
+                            >
+                              CANCEL
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}

@@ -217,6 +217,22 @@ class CurePreventionApplyActionRequest(BaseModel):
     case_id: str = Field(..., description="ID of matched previous case (e.g. CASE-DEMO-018)")
     action_text: str = Field(..., description="Corrective procedure text to apply")
     user_note: Optional[str] = Field(None, description="Optional engineer notes on action application")
+    defect_type: Optional[str] = Field(None, description="Defect type (e.g. Scratch, Crack)")
+
+
+class CaseRejectRequest(BaseModel):
+    inspection_id: str = Field(..., description="ID of current inspection specimen (e.g. FM-7714)")
+    reason: str = Field(..., description="Reason for rejecting the recommendation")
+    defect_type: Optional[str] = Field(None, description="Defect type (e.g. Crack, Scratch)")
+    recommended_action: Optional[str] = Field(None, description="Original recommended action")
+
+
+class CaseEditRequest(BaseModel):
+    inspection_id: str = Field(..., description="ID of current inspection specimen (e.g. FM-7714)")
+    edited_action: str = Field(..., description="Edited recommended action text")
+    reviewer_note: Optional[str] = Field(None, description="Reviewer notes or reason for edit")
+    defect_type: Optional[str] = Field(None, description="Defect type (e.g. Crack, Scratch)")
+    recommended_action: Optional[str] = Field(None, description="Original recommended action before edit")
 
 
 class CurePreventionStatusUpdateRequest(BaseModel):
@@ -230,6 +246,7 @@ class CurePreventionVerificationRequest(BaseModel):
     outcome: str = Field(..., description="'verified' or 'recurred'")
     defect_type: Optional[str] = Field(None, description="Defect type for historical learning storage")
     verification_notes: Optional[str] = Field(None, description="Quality engineer verification notes")
+
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +307,16 @@ class KnowledgeSearchResponse(BaseModel):
     defect_class: Optional[str] = None
     total_sources: int
     sources: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Custom Economic Range Estimation (User-Input-Based Monte Carlo)
+# ---------------------------------------------------------------------------
+class CustomEconomicRequest(BaseModel):
+    unit_price: float = Field(50.0, description="Selling price per unit (INR)")
+    material_cost: float = Field(30.0, description="Material/variable cost per unit (INR)")
+    scrap_cost: float = Field(15.0, description="Cost of scrapping a defective unit (INR)")
+    rework_cost: float = Field(20.0, description="Cost of reworking a defective unit (INR)")
+    defect_rate: float = Field(0.08, description="Defect rate as a fraction (e.g. 0.08 = 8%)")
+    units_per_run: int = Field(1000, description="Number of units in a production run")
+

@@ -259,3 +259,48 @@ def test_what_if_why_we_choose_this_way_rationale():
     assert "summary" in rationale
     assert "Scratch" in rationale["defect_type"]
 
+
+# ===========================================================================
+# Monte Carlo Economic Range Estimation Tests
+# ===========================================================================
+from scripts.forgemind.economic_engine import compute_economic_range
+
+
+# 19. Range ordering: low <= likely <= high for all metrics
+def test_economic_range_ordering():
+    """Verify that for each range metric, low <= likely <= high."""
+    config = {
+        "unit_price": 50.0,
+        "material_cost": 30.0,
+        "scrap_cost": 15.0,
+        "rework_cost": 20.0,
+        "units_per_run": 1000,
+    }
+    result = compute_economic_range(config, defect_rate=0.08, n_samples=500, seed=42)
+
+    assert result["label"] == "SIMULATED RANGE"
+    assert result["guardrail_status"] == "computed from your inputs, simulated"
+
+    for key in ["estimated_profit_per_run", "profit_margin_pct", "total_loss_from_defects"]:
+        r = result[key]
+        assert r["low"] <= r["likely"], f"{key}: low ({r['low']}) > likely ({r['likely']})"
+        assert r["likely"] <= r["high"], f"{key}: likely ({r['likely']}) > high ({r['high']})"
+
+
+# 20. Determinism: same seed produces identical results
+def test_economic_range_determinism():
+    """Verify that compute_economic_range with a fixed seed is perfectly reproducible."""
+    config = {
+        "unit_price": 100.0,
+        "material_cost": 60.0,
+        "scrap_cost": 25.0,
+        "rework_cost": 30.0,
+        "units_per_run": 500,
+    }
+    run1 = compute_economic_range(config, defect_rate=0.12, n_samples=500, seed=42)
+    run2 = compute_economic_range(config, defect_rate=0.12, n_samples=500, seed=42)
+
+    for key in ["estimated_profit_per_run", "profit_margin_pct", "total_loss_from_defects"]:
+        assert run1[key]["low"] == run2[key]["low"], f"{key} low differs across runs"
+        assert run1[key]["likely"] == run2[key]["likely"], f"{key} likely differs across runs"
+        assert run1[key]["high"] == run2[key]["high"], f"{key} high differs across runs"

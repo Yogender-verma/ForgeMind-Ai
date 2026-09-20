@@ -299,3 +299,120 @@ def test_knowledge_search_endpoint():
     data = res.json()
     assert data["total_sources"] >= 1
     assert any("Porosity" in s["source_name"] or "Porosity" in s["content"] for s in data["sources"])
+
+
+# ===========================================================================
+# 9. Defect Case Review Persistence & Reject / Edit Endpoints
+# ===========================================================================
+def test_case_review_persistence_and_endpoints():
+    """
+    Validates DefectCaseReview model, persistence, and reject/edit endpoints:
+    1. DefectCaseReview ORM model and serialization
+    2. POST /api/v1/cases/{case_id}/reject requires reason
+    3. POST /api/v1/cases/{case_id}/edit saves edited action
+    """
+    from backend.models import DefectCaseReview
+
+    # 1. Test DefectCaseReview model directly
+    review = DefectCaseReview(
+        case_id="CASE-TEST-001",
+        inspection_id="FM-TEST-001",
+        defect_type="Crack",
+        recommended_action="Recalibrate tool offsets",
+        edited_action="Custom tool damping SOP",
+        decision="EDITED",
+        reviewer_note="Adjusted per vibration log",
+        status="ACTION_APPROVED",
+    )
+    d = review.to_dict()
+    assert d["case_id"] == "CASE-TEST-001"
+    assert d["decision"] == "EDITED"
+    assert d["edited_action"] == "Custom tool damping SOP"
+    assert d["status"] == "ACTION_APPROVED"
+
+    # 2. Test Reject endpoint - reason is required
+    res_reject_empty = client.post("/api/v1/cases/CASE-DEMO-042/reject", json={
+        "inspection_id": "FM-TEST-REJ",
+        "reason": "",
+    })
+    assert res_reject_empty.status_code == 400
+
+    res_reject = client.post("/api/v1/cases/CASE-DEMO-042/reject", json={
+        "inspection_id": "FM-TEST-REJ",
+        "reason": "Coolant was tested and confirmed at normal concentration.",
+        "defect_type": "Crack",
+    })
+    assert res_reject.status_code == 200
+    rej_data = res_reject.json()
+    assert rej_data["status"] == "REJECTED"
+    assert rej_data["decision"] == "REJECTED"
+    assert rej_data["rejection_reason"] == "Coolant was tested and confirmed at normal concentration."
+    assert "decision_timestamp" in rej_data
+
+    # 3. Test Edit endpoint
+    res_edit = client.post("/api/v1/cases/CASE-DEMO-018/edit", json={
+        "inspection_id": "FM-TEST-EDIT",
+        "edited_action": "Apply SOP-991 custom buffing protocol",
+        "reviewer_note": "Operator custom override",
+        "defect_type": "Scratch",
+    })
+    assert res_edit.status_code == 200
+    edit_data = res_edit.json()
+    assert edit_data["status"] == "ACTION_APPROVED"
+    assert edit_data["decision"] == "EDITED"
+    assert edit_data["applied_action"] == "Apply SOP-991 custom buffing protocol"
+    assert "decision_timestamp" in edit_data
+
+
+# ===========================================================================
+# 10. Epistemic Uncertainty & Novel Defect Detection Path
+# ===========================================================================
+def test_uncertainty_inference_path():
+    """
+    Validates epistemic uncertainty path in DefectInferenceEngine:
+    If confidence < threshold OR margin < 0.15 OR normalized entropy > 0.6:
+    - prediction is set to 'Uncertain / Novel'
+    - raw top-1 class is preserved in top1_class_raw
+    - is_low_confidence is True
+    - report tells user 'needs human review, possible novel defect'
+    """
+    import cv2
+    import torch
+    import numpy as np
+    from scripts.ml.inference_service import get_inference_engine
+    from scripts.ml.model import CLASS_NAMES
+
+    engine = get_inference_engine()
+
+    # Create synthetic test image with texture to pass OpenCV quality checks
+    img = np.random.randint(50, 200, (224, 224, 3), dtype=np.uint8)
+    cv2.rectangle(img, (20, 20), (200, 200), (255, 255, 255), 3)
+
+    # 1. Trigger via threshold override (confidence < threshold)
+    res_thresh = engine.classify_image(img, threshold_override=1.01)
+    assert res_thresh["prediction"] == "Uncertain / Novel"
+    assert res_thresh["top1_class_raw"] in CLASS_NAMES
+    assert res_thresh["is_low_confidence"] is True
+    assert "needs human review, possible novel defect" in res_thresh["report"]
+    assert "margin" in res_thresh
+    assert "normalized_entropy" in res_thresh
+
+    # 2. Trigger via narrow margin (< 0.15) and high entropy (> 0.6)
+    class AmbiguousModel(torch.nn.Module):
+        def forward(self, x):
+            # Equal logits => probs = [0.2, 0.2, 0.2, 0.2, 0.2]
+            return torch.tensor([[1.0, 1.0, 1.0, 1.0, 1.0]])
+
+    original_model = engine.model
+    try:
+        engine.model = AmbiguousModel()
+        res_ambig = engine.classify_image(img, threshold_override=0.1)
+        assert res_ambig["prediction"] == "Uncertain / Novel"
+        assert res_ambig["top1_class_raw"] in CLASS_NAMES
+        assert res_ambig["is_low_confidence"] is True
+        assert res_ambig["margin"] < 0.15
+        assert res_ambig["normalized_entropy"] > 0.6
+        assert "needs human review, possible novel defect" in res_ambig["report"]
+    finally:
+        engine.model = original_model
+
