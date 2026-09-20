@@ -191,3 +191,45 @@ class PipelineResponse(BaseModel):
     economics: dict[str, Any]
     simulation: dict[str, Any]
     recommendations: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Simulated Economic Impact Schemas (Zero Fabricated Monetary Values)
+# ---------------------------------------------------------------------------
+class SimulatedEconomicImpactRequest(BaseModel):
+    impact_level: Optional[str] = Field(None, description="User-selected impact level: 'LOW', 'MEDIUM', or 'HIGH'")
+    defect_type: Optional[str] = Field(None, description="Predicted or confirmed defect type")
+    vision_confidence: Optional[float] = Field(None, description="Vision model confidence (strictly decoupled from impact)")
+    user_reason: Optional[str] = Field(None, description="Optional engineering rationale for selected impact level")
+    treatment_status: Optional[str] = Field("untreated", description="Defect treatment state: 'untreated' or 'cured'")
+
+
+# Backwards compatibility alias
+UnitEconomicInputRequest = SimulatedEconomicImpactRequest
+EconomicWhatIfRequest = BaseModel
+
+
+# ---------------------------------------------------------------------------
+# Cure & Prevention Schemas (Decision Support & Historical Learning)
+# ---------------------------------------------------------------------------
+class CurePreventionApplyActionRequest(BaseModel):
+    inspection_id: str = Field(..., description="ID of current inspection specimen (e.g. FM-7714)")
+    case_id: str = Field(..., description="ID of matched previous case (e.g. CASE-DEMO-018)")
+    action_text: str = Field(..., description="Corrective procedure text to apply")
+    user_note: Optional[str] = Field(None, description="Optional engineer notes on action application")
+
+
+class CurePreventionStatusUpdateRequest(BaseModel):
+    inspection_id: str = Field(..., description="ID of current inspection specimen")
+    status: str = Field(..., description="Target workflow state")
+    notes: Optional[str] = Field(None, description="Optional transition rationale")
+
+
+class CurePreventionVerificationRequest(BaseModel):
+    inspection_id: str = Field(..., description="ID of current inspection specimen")
+    outcome: str = Field(..., description="'verified' or 'recurred'")
+    defect_type: Optional[str] = Field(None, description="Defect type for historical learning storage")
+    verification_notes: Optional[str] = Field(None, description="Quality engineer verification notes")
+
+
+

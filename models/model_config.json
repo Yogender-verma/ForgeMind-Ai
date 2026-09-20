@@ -1,0 +1,21 @@
+{
+  "architecture": "EfficientNet-B0",
+  "backbone_weights": "EfficientNet_B0_Weights.DEFAULT",
+  "num_classes": 5,
+  "classes": [
+    "Crack",
+    "Normal",
+    "Hole",
+    "Scratch",
+    "Rust"
+  ],
+  "classifier_in_features": 1280,
+  "dropout_rate": 0.2,
+  "training_metrics": {
+    "best_epoch": 2,
+    "val_macro_f1": 0.9832,
+    "val_accuracy": 0.9826,
+    "val_loss": 0.1163,
+    "epochs_trained": 2
+  }
+}

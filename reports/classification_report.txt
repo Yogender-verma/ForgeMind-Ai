@@ -1,0 +1,11 @@
+              precision    recall  f1-score   support
+
+       Crack     0.9885    0.9556    0.9718       360
+      Normal     0.9467    0.9861    0.9660       360
+        Hole     0.9917    0.9944    0.9931       360
+     Scratch     1.0000    0.9861    0.9930       360
+        Rust     0.9882    0.9941    0.9912       169
+
+    accuracy                         0.9820      1609
+   macro avg     0.9830    0.9833    0.9830      1609
+weighted avg     0.9824    0.9820    0.9820      1609

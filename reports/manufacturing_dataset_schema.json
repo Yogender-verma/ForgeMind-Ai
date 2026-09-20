@@ -1,0 +1,322 @@
+{
+  "dataset_title": "Manufacturing Data Shared Facility - Discrete-Event Simulation",
+  "source_url": "https://data.mendeley.com/datasets/3rw227zxt7/2",
+  "doi": "10.17632/3rw227zxt7.2",
+  "simulation_engine": "Rockwell Arena Simulation v15",
+  "generated_for": "ForgeMind AI Production Intelligence",
+  "models": {
+    "Model_1": {
+      "name": "Model 1 \u2014 Linear Single-Line Facility (3-Station)",
+      "file": "data/raw/Model_1/Model_1.csv",
+      "rows": 3000,
+      "columns_count": 10,
+      "columns": {
+        "Demand": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 20,
+          "min": 1.0,
+          "max": 20.0,
+          "mean": 10.442,
+          "median": 10.0,
+          "std": 5.524504
+        },
+        "Total parts": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 1364,
+          "min": 431.0,
+          "max": 10811.0,
+          "mean": 5025.625333,
+          "median": 4995.0,
+          "std": 2669.628454
+        },
+        "Parts per hour": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 387,
+          "min": 18.0,
+          "max": 450.0,
+          "mean": 209.453333,
+          "median": 208.0,
+          "std": 111.240475
+        },
+        "VA Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2893,
+          "min": 8.924635,
+          "max": 9.091995,
+          "mean": 8.99968,
+          "median": 8.999643,
+          "std": 0.013369
+        },
+        "Drilling Waiting Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2722,
+          "min": 0.0,
+          "max": 257.618175,
+          "mean": 31.158644,
+          "median": 2.150659,
+          "std": 54.50332
+        },
+        "Milling Waiting Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 244,
+          "min": 0.0,
+          "max": 0.00039,
+          "mean": 4.6e-05,
+          "median": 2.6e-05,
+          "std": 5.7e-05
+        },
+        "Assembly Waiting Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2874,
+          "min": 0.0,
+          "max": 244.006984,
+          "mean": 97.115862,
+          "median": 42.488235,
+          "std": 101.900932
+        },
+        "Drilling Util": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2838,
+          "min": 0.059771,
+          "max": 0.999999,
+          "mean": 0.64881,
+          "median": 0.692557,
+          "std": 0.308589
+        },
+        "Milling Util": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2977,
+          "min": 0.044539,
+          "max": 0.752147,
+          "mean": 0.485562,
+          "median": 0.518271,
+          "std": 0.230931
+        },
+        "Assembly Util": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2488,
+          "min": 0.088929,
+          "max": 0.996373,
+          "mean": 0.775912,
+          "median": 0.978922,
+          "std": 0.287112
+        }
+      }
+    },
+    "Model_2": {
+      "name": "Model 2 \u2014 Dual-Part Shared Facility with Intermediate Buffers",
+      "file": "data/raw/Model_2/Model_2.csv",
+      "rows": 3000,
+      "columns_count": 17,
+      "columns": {
+        "Demand": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 20,
+          "min": 1.0,
+          "max": 20.0,
+          "mean": 10.502,
+          "median": 11.0,
+          "std": 5.465097
+        },
+        "Entities In Part 1": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 1535,
+          "min": 659.0,
+          "max": 15460.0,
+          "mean": 7537.239,
+          "median": 7480.0,
+          "std": 3994.177742
+        },
+        "Part 1 VA Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2789,
+          "min": 2.958094,
+          "max": 3.028059,
+          "mean": 2.999822,
+          "median": 2.999918,
+          "std": 0.005948
+        },
+        "Drilling Queue Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2464,
+          "min": 0.0,
+          "max": 71.015454,
+          "mean": 2.462334,
+          "median": 0.30803,
+          "std": 6.026412
+        },
+        "Part 1 Storage Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 3000,
+          "min": 0.000789,
+          "max": 239.910373,
+          "mean": 61.823535,
+          "median": 32.467304,
+          "std": 69.029697
+        },
+        "Part 1 Stored": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 1364,
+          "min": 0.0,
+          "max": 5925.0,
+          "mean": 982.867667,
+          "median": 201.0,
+          "std": 1419.802139
+        },
+        "Entities In Part 2": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 1557,
+          "min": 639.0,
+          "max": 15820.0,
+          "mean": 7534.885333,
+          "median": 7485.0,
+          "std": 3998.400231
+        },
+        "Part 2 VA Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2772,
+          "min": 2.965998,
+          "max": 3.036248,
+          "mean": 2.999863,
+          "median": 2.999826,
+          "std": 0.005882
+        },
+        "Milling Queue Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2230,
+          "min": 0.0,
+          "max": 3.339232,
+          "mean": 0.338296,
+          "median": 0.063628,
+          "std": 0.514483
+        },
+        "Part 2 Storage Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 3000,
+          "min": 0.00016,
+          "max": 297.713544,
+          "mean": 62.864212,
+          "median": 29.545842,
+          "std": 72.774079
+        },
+        "Part 2 Stored": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 1379,
+          "min": 0.0,
+          "max": 6231.0,
+          "mean": 980.514,
+          "median": 193.5,
+          "std": 1424.049098
+        },
+        "Entities Out": {
+          "dtype": "int64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 1781,
+          "min": 637.0,
+          "max": 9601.0,
+          "mean": 6554.371333,
+          "median": 7270.5,
+          "std": 2948.256134
+        },
+        "Assembly Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2795,
+          "min": 2.966219,
+          "max": 3.040068,
+          "mean": 2.999977,
+          "median": 3.000062,
+          "std": 0.006418
+        },
+        "Assembly Queue Time": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2663,
+          "min": 0.0,
+          "max": 2.940341,
+          "mean": 1.400282,
+          "median": 1.138215,
+          "std": 1.248927
+        },
+        "Drilling Utilization": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2996,
+          "min": 0.045579,
+          "max": 0.999918,
+          "mean": 0.520993,
+          "median": 0.518687,
+          "std": 0.274282
+        },
+        "Milling Utilization": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2992,
+          "min": 0.033046,
+          "max": 0.823238,
+          "mean": 0.391862,
+          "median": 0.389474,
+          "std": 0.207809
+        },
+        "Assembly Utilization": {
+          "dtype": "float64",
+          "missing": 0,
+          "missing_pct": 0.0,
+          "unique": 2928,
+          "min": 0.067162,
+          "max": 0.997833,
+          "mean": 0.683471,
+          "median": 0.758409,
+          "std": 0.307428
+        }
+      }
+    }
+  }
+}

@@ -161,3 +161,48 @@ def test_api_pipeline_model_2():
     assert "bottleneck" in data
     assert len(data["process_health"]["station_metrics"]) == 3
 
+
+def test_api_unit_economic_impact_simulated_low():
+    payload = {
+        "impact_level": "LOW",
+        "defect_type": "Crack",
+        "vision_confidence": 85.7,
+        "user_reason": "Customer priority batch",
+    }
+    res = client.post("/api/v1/economic/unit-impact", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "assessed"
+    assert data["impact_level"] == "LOW"
+    assert data["simulated_impact_pct"] == 5.0
+    assert data["formatted_impact"] == "5%"
+    assert data["evidence_tag"] == "[SIMULATED]"
+    assert data["reason_tag"] == "[USER INPUT]"
+    assert data["user_reason"] == "Customer priority batch"
+
+
+def test_api_unit_economic_impact_default_unassessed():
+    res = client.get("/api/v1/economic/unit-impact")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "not_assessed"
+    assert data["impact_level"] is None
+    assert data["formatted_impact"] == "Not assessed"
+    assert data["evidence_tag"] == "[SIMULATED]"
+
+
+def test_api_economic_what_if_simulated():
+    res = client.get("/api/v1/economic/what-if")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["evidence_tag"] == "[SIMULATED]"
+    assert len(data["scenarios"]) == 3
+    assert data["scenarios"][0]["impact_level"] == "LOW"
+    assert data["scenarios"][0]["simulated_impact_pct"] == 5.0
+    assert data["scenarios"][1]["impact_level"] == "MEDIUM"
+    assert data["scenarios"][1]["simulated_impact_pct"] == 10.0
+    assert data["scenarios"][2]["impact_level"] == "HIGH"
+    assert data["scenarios"][2]["simulated_impact_pct"] == 20.0
+    assert "₹" not in str(data)
+
+

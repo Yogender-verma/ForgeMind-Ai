@@ -4,12 +4,33 @@ Stack: Python + FastAPI + Scikit-Learn + PostgreSQL + Pydantic v2
 """
 
 import math
+import sys
+import os
 import logging
 from typing import Optional, Any
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 import numpy as np
 import pandas as pd
 
-from fastapi import FastAPI, Depends, Query, HTTPException, status
+import starlette.formparsers as fp
+import starlette.requests as req
+
+# Monkey-patch Starlette's MultiPartParser default max_part_size from 1024KB to 15MB
+# so that form inputs (like 5MB image base64 strings or files) can be parsed without Starlette error.
+_orig_multipart_init = fp.MultiPartParser.__init__
+def _patched_multipart_init(self, *args, **kwargs):
+    if kwargs.get("max_part_size") == 1024 * 1024 or "max_part_size" not in kwargs:
+        kwargs["max_part_size"] = 15 * 1024 * 1024  # 15 MB
+    return _orig_multipart_init(self, *args, **kwargs)
+
+fp.MultiPartParser.__init__ = _patched_multipart_init
+
+from fastapi import FastAPI, Depends, Query, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -30,6 +51,17 @@ from backend.schemas import (
     SimulationResponse,
     RecommendationsResponse,
     PipelineResponse,
+    SimulatedEconomicImpactRequest,
+    CurePreventionApplyActionRequest,
+    CurePreventionStatusUpdateRequest,
+    CurePreventionVerificationRequest,
+)
+
+from scripts.forgemind.cure_prevention_engine import (
+    search_similar_cases,
+    apply_previous_action,
+    update_case_workflow_status,
+    verify_case_prevention,
 )
 
 # ForgeMind Core Engines
@@ -38,7 +70,12 @@ from scripts.forgemind.feature_engineering import compute_process_health, get_st
 from scripts.forgemind.bottleneck_engine import identify_bottleneck
 from scripts.forgemind.root_cause_engine import analyze_root_causes
 from scripts.forgemind.ml_engine import compute_ml_feature_importance, detect_process_anomalies
-from scripts.forgemind.economic_engine import compute_economic_impact, EconomicConfig
+from scripts.forgemind.economic_engine import (
+    compute_economic_impact,
+    EconomicConfig,
+    get_simulated_economic_impact,
+    get_simulated_what_if_scenarios,
+)
 from scripts.forgemind.simulation_engine import (
     SimulationScenario,
     get_preset_scenarios,
@@ -94,6 +131,8 @@ def get_dataset(model_key: str) -> ManufacturingDataset:
 
 def sanitize_value(v: Any) -> Any:
     """Recursively clean numpy datatypes and non-finite floats for JSON compliance."""
+    if isinstance(v, (bool, np.bool_)):
+        return bool(v)
     if isinstance(v, (np.integer, int)):
         return int(v)
     if isinstance(v, (np.floating, float)):
@@ -286,6 +325,63 @@ def save_economic_preset(
     return {"status": "in_memory_only", "notice": "PostgreSQL offline; preset applied in-session"}
 
 
+# ---------------------------------------------------------------------------
+# Simulated Economic Impact Endpoints (Zero Fabricated Costs)
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/economic/unit-impact", tags=["Economic Engine"])
+@app.get("/api/v1/economic/unit-impact", tags=["Economic Engine"])
+def calculate_unit_economic_impact_endpoint(
+    impact_level: Optional[str] = Query(None),
+    defect: Optional[str] = Query(None),
+    confidence: Optional[float] = Query(None),
+    user_reason: Optional[str] = Query(None),
+    treatment_status: Optional[str] = Query("untreated"),
+    payload: Optional[SimulatedEconomicImpactRequest] = None,
+):
+    """
+    Returns user-selected simulated economic impact score (LOW -> 5%, MEDIUM -> 10%, HIGH -> 20%).
+    Supports Before Treatment (loss) vs After Treatment (cured net profit recovery).
+    Zero monetary values fabricated. Model confidence is kept independent.
+    """
+    try:
+        data = payload.model_dump() if payload else {}
+        if impact_level and "impact_level" not in data:
+            data["impact_level"] = impact_level
+        if defect and "defect_type" not in data:
+            data["defect_type"] = defect
+        if confidence is not None and "vision_confidence" not in data:
+            data["vision_confidence"] = confidence
+        if user_reason and "user_reason" not in data:
+            data["user_reason"] = user_reason
+        if treatment_status and "treatment_status" not in data:
+            data["treatment_status"] = treatment_status
+
+        res = get_simulated_economic_impact(data=data)
+        return sanitize_value(res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@app.get("/api/v1/economic/what-if", tags=["Economic Engine"])
+@app.post("/api/v1/economic/what-if", tags=["Economic Engine"])
+def calculate_economic_what_if_endpoint(
+    defect: Optional[str] = Query(None),
+    payload: Optional[dict] = None,
+):
+    """
+    Enhanced What-If Simulator:
+    - Benchmark sensitivity levels (Scenario A, B, C)
+    - 4 alternative remediation pathways ('how many other ways there are')
+    - Explicit engineering decision rationale ('why do we choose this way')
+    Zero monetary values. Labeled [SIMULATED].
+    """
+    defect_type = defect
+    if payload and isinstance(payload, dict):
+        defect_type = payload.get("defect_type", payload.get("defect", defect_type))
+    res = get_simulated_what_if_scenarios(defect_type=defect_type)
+    return sanitize_value(res)
+
+
 @app.get("/api/simulation/scenarios", tags=["What-If Simulation"])
 def get_simulation_scenarios(model: str = Query("Model_1")):
     """Available parameter limits and pre-built operational scenarios."""
@@ -458,6 +554,223 @@ def get_full_pipeline(model: str = Query("Model_1")):
         },
         "recommendations": [r.to_dict() for r in recs],
     })
+
+
+# ---------------------------------------------------------------------------
+# Visual Defect Classification Endpoint (EfficientNet-B0 + Grad-CAM)
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/classify-image")
+async def classify_image_endpoint(
+    file: Optional[UploadFile] = File(None),
+    image_base64: Optional[str] = Form(None),
+    threshold: float = Form(0.85),
+    model_variant: str = Form("full_data"),
+):
+    """
+    Classifies manufacturing defect image using trained EfficientNet-B0 model.
+    Runs OpenCV quality gate, computes class probabilities (Crack, Normal, Hole, Scratch, Rust),
+    and generates Grad-CAM attention heatmap overlay.
+    """
+    from scripts.ml.inference_service import get_inference_engine
+    engine = get_inference_engine(model_variant=model_variant)
+
+    if not engine.is_available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI model unavailable. Please load/train the EfficientNet-B0 model.",
+        )
+
+    MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB limit
+
+    img_data = None
+    if file is not None:
+        img_data = await file.read()
+    elif image_base64:
+        clean_b64 = image_base64
+        if "," in clean_b64:
+            clean_b64 = clean_b64.split(",")[1]
+        import base64
+        try:
+            img_data = base64.b64decode(clean_b64)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid base64 image data encoding.")
+    else:
+        raise HTTPException(status_code=400, detail="No image file or image_base64 provided.")
+
+    if len(img_data) > MAX_IMAGE_SIZE_BYTES:
+        size_mb = len(img_data) / (1024 * 1024)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image size exceeds the maximum limit of 5MB (uploaded image is {size_mb:.2f}MB).",
+        )
+
+    result = engine.classify_image(
+        image_input=img_data,
+        include_gradcam=True,
+        threshold_override=threshold,
+    )
+
+    if not result.get("is_valid", True):
+        raise HTTPException(status_code=400, detail=result.get("error", "Image rejected by quality validation."))
+
+    # Generate verified engineering RAG / Gemini investigation report
+    try:
+        from scripts.ml.gemini_reasoning import investigate_defect_causes
+        investigation = investigate_defect_causes(
+            defect_class=result["prediction"],
+            confidence=result["confidence"] * 100.0,
+        )
+        result["investigation"] = investigation
+    except Exception as e:
+        log.warning("Investigation generation notice: %s", e)
+        result["investigation"] = None
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Defect Engineering Investigation Endpoint (RAG + Gemini Reasoning)
+# ---------------------------------------------------------------------------
+from pydantic import BaseModel
+
+class DefectInvestigationInput(BaseModel):
+    defect: str
+    confidence: float = 95.0
+    factory_context: Optional[dict] = None
+
+
+@app.post("/api/v1/investigate-defect", tags=["Quality Intelligence"])
+def investigate_defect_endpoint(payload: DefectInvestigationInput):
+    """
+    RAG-grounded engineering defect cause investigation using retrieved FMEA & technical standards.
+    Powered by Gemini LLM with verified deterministic engineering fallback.
+    Explicitly enforces non-linkage to manufacturing simulation records unless evidence exists.
+    """
+    from scripts.ml.gemini_reasoning import investigate_defect_causes
+    report = investigate_defect_causes(
+        defect_class=payload.defect,
+        confidence=payload.confidence,
+        factory_context=payload.factory_context,
+    )
+    return sanitize_value(report)
+
+
+# ---------------------------------------------------------------------------
+# Production Intelligence Endpoint (Rockwell Arena Simulation Dataset)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/production-intelligence", tags=["Process Intelligence"])
+def get_production_intelligence_endpoint(model: str = Query("Model_1")):
+    """
+    Calculates verified production metrics from the organizer-provided
+    manufacturing simulation dataset (Mendeley DOI: 10.17632/3rw227zxt7.2).
+    Includes:
+    1. Production Overview
+    2. Process Utilization
+    3. Bottleneck Analysis
+    4. Waiting Time & Queue Analysis
+    5. Throughput
+    6. Capacity Margins
+    7. Production Flow
+    8. What-If Scenario Analysis
+    All values include data provenance. Zero fabricated numbers.
+    """
+    from scripts.forgemind.production_intelligence import get_production_intelligence
+    return sanitize_value(get_production_intelligence(model_key=model))
+
+
+@app.get("/api/v1/inspection/{inspection_id}/production-context", tags=["Process Intelligence"])
+def get_inspection_production_context_endpoint(
+    inspection_id: str,
+    model: str = Query("Model_1"),
+    defect: Optional[str] = None,
+    confidence: Optional[float] = None,
+    sensitivity_delta_pp: float = Query(-5.0),
+):
+    """
+    Returns the deterministic simulated production context and scenario sensitivity
+    for an inspection specimen, mapped deterministically via SHA-256 to Rockwell Arena simulation runs.
+    All data is clearly tagged with evidence status: [MEASURED], [SIMULATED], [CALCULATED], [SENSITIVITY], [HYPOTHESIS].
+    """
+    from scripts.forgemind.simulated_linkage import get_simulated_production_context
+    resp = get_simulated_production_context(
+        inspection_id=inspection_id,
+        model_key=model,
+        defect_class=defect,
+        confidence=confidence,
+        sensitivity_delta_pp=sensitivity_delta_pp,
+    )
+    return sanitize_value(resp.model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Cure & Prevention Endpoints (Decision-Support & Historical Learning)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/cure-prevention/search", tags=["Cure & Prevention"])
+def search_cure_prevention_cases_endpoint(
+    defect: Optional[str] = Query(None),
+    confidence: Optional[float] = Query(None),
+    inspection_id: Optional[str] = Query(None),
+):
+    """
+    Searches historical defect case library for visually/semantically similar cases.
+    Confidence is kept independent. Tags include [SIMILARITY], [HYPOTHESIS], [ADVISORY], [SIMULATED].
+    """
+    res = search_similar_cases(
+        defect_type=defect,
+        vision_confidence=confidence,
+        inspection_id=inspection_id,
+    )
+    return sanitize_value(res)
+
+
+@app.post("/api/v1/cure-prevention/apply-action", tags=["Cure & Prevention"])
+def apply_cure_prevention_action_endpoint(payload: CurePreventionApplyActionRequest):
+    """
+    Human-in-the-loop one-click confirmation to use previous corrective action as guidance.
+    Transitions status to ACTION_APPROVED [USER CONFIRMED]. Does NOT claim automated repair.
+    """
+    res = apply_previous_action(
+        inspection_id=payload.inspection_id,
+        case_id=payload.case_id,
+        action_text=payload.action_text,
+        user_note=payload.user_note,
+    )
+    return sanitize_value(res)
+
+
+@app.post("/api/v1/cure-prevention/status", tags=["Cure & Prevention"])
+def update_cure_prevention_status_endpoint(payload: CurePreventionStatusUpdateRequest):
+    """
+    Transitions case workflow status through valid life-cycle states:
+    NEW -> INVESTIGATING -> ACTION_RECOMMENDED -> ACTION_APPROVED -> ACTION_IN_PROGRESS -> RESOLVED -> VERIFICATION_PENDING -> VERIFIED / DEFECT_RECURRED.
+    """
+    try:
+        res = update_case_workflow_status(
+            inspection_id=payload.inspection_id,
+            new_status=payload.status,
+            notes=payload.notes,
+        )
+        return sanitize_value(res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@app.post("/api/v1/cure-prevention/verify", tags=["Cure & Prevention"])
+def verify_cure_prevention_endpoint(payload: CurePreventionVerificationRequest):
+    """
+    Records human verification of prevention effectiveness.
+    Learns from verified cases by registering them into the historical library.
+    """
+    try:
+        res = verify_case_prevention(
+            inspection_id=payload.inspection_id,
+            outcome=payload.outcome,
+            defect_type=payload.defect_type,
+            verification_notes=payload.verification_notes,
+        )
+        return sanitize_value(res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ interface HeaderProps {
   statusText: string;
   isDbConnected: boolean;
   onNavigateToLanding?: () => void;
-  user?: { name: string; email: string; facility?: string; authProvider?: string } | null;
+  user?: { name: string; email: string; facility?: string; authProvider?: string; photoURL?: string } | null;
   onSignOut?: () => void;
 }
 
@@ -71,7 +71,16 @@ export const Header: React.FC<HeaderProps> = ({
 
           {user && (
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950/70 border border-cyan-500/30 text-xs">
-              <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.name}
+                  className="w-5 h-5 rounded-full object-cover border border-cyan-400/80 shadow-[0_0_8px_rgba(0,229,255,0.4)]"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+              )}
               <span className="text-white font-medium truncate max-w-[130px]" title={user.email}>
                 {user.name}
               </span>

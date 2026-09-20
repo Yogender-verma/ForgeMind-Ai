@@ -1,0 +1,23 @@
+{
+  "classes": [
+    "Crack",
+    "Normal",
+    "Hole",
+    "Scratch",
+    "Rust"
+  ],
+  "class_to_index": {
+    "crack": 0,
+    "normal": 1,
+    "hole": 2,
+    "scratch": 3,
+    "rust": 4
+  },
+  "index_to_class": {
+    "0": "Crack",
+    "1": "Normal",
+    "2": "Hole",
+    "3": "Scratch",
+    "4": "Rust"
+  }
+}

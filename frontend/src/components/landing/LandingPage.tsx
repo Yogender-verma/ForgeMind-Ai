@@ -7,6 +7,7 @@ import { CapabilitiesSection } from './CapabilitiesSection';
 import { WhatIfSimulatorSection } from './WhatIfSimulatorSection';
 import { TrustSection } from './TrustSection';
 import { ContactSection } from './ContactSection';
+import { FinalCTASection } from './FinalCTASection';
 import { Footer } from './Footer';
 
 interface LandingPageProps {
@@ -46,7 +47,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToAuth }) =>
       {/* 8. Contact Us Section (Above the Footer) */}
       <ContactSection />
 
-      {/* 9. Clean Industrial Footer */}
+      {/* 9. Final Enterprise Call to Action */}
+      <FinalCTASection
+        onSignIn={() => onNavigateToAuth('signin')}
+        onSignUp={() => onNavigateToAuth('signup')}
+      />
+
+      {/* 10. Clean Industrial Footer */}
       <Footer />
     </div>
   );

@@ -1,0 +1,6 @@
+,Pred_Crack,Pred_Normal,Pred_Hole,Pred_Scratch,Pred_Rust
+Actual_Crack,344,16,0,0,0
+Actual_Normal,1,355,2,0,2
+Actual_Hole,0,2,358,0,0
+Actual_Scratch,3,2,0,355,0
+Actual_Rust,0,0,1,0,168
