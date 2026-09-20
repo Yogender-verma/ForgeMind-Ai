@@ -329,7 +329,10 @@ def investigate_defect_causes(
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            try:
+                model = genai.GenerativeModel("gemini-2.5-flash")
+            except Exception:
+                model = genai.GenerativeModel("gemini-flash-latest")
 
             context_texts = "\n\n".join([
                 f"Document [{d.doc_id}] ({d.title}):\nCategory: {d.doc_type}\nContent: {d.content}"
@@ -398,11 +401,23 @@ STRICT CONSTRAINTS:
   "requires_engineer_review": true
 }}
 """
-            response = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
+            try:
+                response = model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+            except Exception:
+                response = model.generate_content(prompt)
+
             raw_text = response.text.strip()
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            raw_text = raw_text.strip()
+
             parsed = json.loads(raw_text)
             validated = DefectInvestigationReport.model_validate(parsed)
             return validated.model_dump()
